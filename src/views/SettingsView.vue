@@ -1,9 +1,10 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Download, Upload, ChevronRight } from '@lucide/vue'
+import { Download, Upload, ChevronRight, MonitorDown } from '@lucide/vue'
 import { useSettings } from '../composables/useSettings.js'
 import { useAppLock } from '../composables/useAppLock.js'
+import { useInstallPrompt } from '../composables/useInstallPrompt.js'
 import { get, set, usageBytes, STORAGE_KEYS } from '../utils/storage.js'
 import { useExpenses } from '../composables/useExpenses.js'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card/index.js'
@@ -18,6 +19,7 @@ const router = useRouter()
 const { settings, updateProfile, setCurrencySymbol, setCycleResetDay } = useSettings()
 const { changePassword } = useAppLock()
 const { expenses } = useExpenses()
+const { canInstall, isInstalled, promptInstall } = useInstallPrompt()
 
 const profileName = ref(settings.profileName)
 function saveProfile() {
@@ -189,6 +191,17 @@ const usageKB = computed(() => (usageBytes() / 1024).toFixed(1))
       <CardContent class="flex gap-2">
         <Button variant="outline" @click="router.push('/categories')">Categories <ChevronRight class="h-4 w-4" /></Button>
         <Button variant="outline" @click="router.push('/budget')">Budget <ChevronRight class="h-4 w-4" /></Button>
+      </CardContent>
+    </Card>
+
+    <Card v-if="canInstall || isInstalled">
+      <CardHeader><CardTitle class="text-base">App</CardTitle></CardHeader>
+      <CardContent class="flex items-center gap-3">
+        <p v-if="isInstalled" class="m-0 text-sm text-muted-foreground">Hisaab is installed on this device.</p>
+        <template v-else>
+          <p class="m-0 flex-1 text-sm text-muted-foreground">Install Hisaab for quick access from your home screen and full offline use.</p>
+          <Button variant="outline" @click="promptInstall"><MonitorDown class="h-4 w-4" /> Install app</Button>
+        </template>
       </CardContent>
     </Card>
 

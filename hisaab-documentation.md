@@ -30,6 +30,7 @@ Vue 3 (Composition API) + Vite · Tailwind CSS + shadcn-vue · vue-router · Ape
 - **No Vuex/Pinia** — app state is a set of composables, each owning one localStorage key, auto-persisting via `watch(..., { deep: true })`
 - **vue-router** (`createWebHashHistory`) — every sidebar destination is a real route (`#/expenses`, `#/budget`, …), deep-linkable and bookmarkable. *(Revision — original plan was a single reactive `currentView` ref with no router; swapped in per a follow-up request for route-based URLs. Hash history was chosen over clean paths specifically because this app has no server to add SPA-fallback rewrite rules for a static deployment.)*
 - **Web Crypto API** (`SubtleCrypto`) — used only by the App Lock and Vault modules, for password hashing and Vault encryption respectively. No external crypto library.
+- **vite-plugin-pwa** (Workbox `generateSW` mode) — installable PWA: web app manifest, precached app-shell service worker, prompt-to-reload on new deploys. *(Revision — added per a later request; see [§16](#16-implementation-status) item 4.)* Fraunces/IBM Plex Mono/Inter are self-hosted (`src/assets/fonts/`) rather than loaded from the Google Fonts CDN, so the same offline guarantee covers first load, not just repeat visits.
 
 ### 1.2 Module map
 
@@ -52,13 +53,19 @@ App Lock  →  (Profile) Login  →  Dashboard
 ```
 Expense-Management/            (repo root — no nested hisaab/ folder)
 ├── index.html
-├── vite.config.js
+├── vite.config.js              — includes VitePWA plugin config (manifest + Workbox generateSW)
 ├── package.json
 ├── jsconfig.json              — "@/*" → src/ path alias (used throughout components/ui and views)
+├── public/                     — NEW: PWA icons (pwa-192/512, maskable-512, apple-touch-icon, favicons)
+├── assets-src/                 — NEW: source SVGs the icons above are rasterized from (not shipped)
+├── scripts/
+│   └── gen-icons.mjs            — NEW: regenerates public/ icon PNGs from assets-src/*.svg via sharp
 └── src/
-    ├── main.js
+    ├── main.js                 — also registers the service worker (prompt-to-reload flow)
     ├── App.vue                — header/hamburger + sidebar + <RouterView>
-    ├── style.css               — Tailwind v4 entry + Ledger palette/type as CSS variables (@theme)
+    ├── style.css               — Tailwind v4 entry + Ledger palette/type as CSS variables (@theme); imports assets/fonts/fonts.css
+    ├── assets/
+    │   └── fonts/                — NEW: self-hosted Fraunces/IBM Plex Mono/Inter woff2 files + fonts.css
     ├── router/
     │   └── index.js            — NEW: route table, hash history, one route per sidebar destination
     ├── lib/
@@ -80,7 +87,8 @@ Expense-Management/            (repo root — no nested hisaab/ folder)
     │   ├── useBudget.js         — derived, no own storage key
     │   ├── useVault.js
     │   ├── useAssets.js
-    │   └── useSidebar.js        — NEW: sidebar open/closed state — desktop dock persisted to localStorage, mobile drawer is session-only
+    │   ├── useSidebar.js        — NEW: sidebar open/closed state — desktop dock persisted to localStorage, mobile drawer is session-only
+    │   └── useInstallPrompt.js  — NEW: wraps `beforeinstallprompt`/`appinstalled`, backs the Settings "Install app" control
     ├── components/
     │   ├── ui/                  — NEW: hand-built shadcn-vue-style primitives (button, input, label, textarea, select, card, badge, progress, switch, checkbox, dialog, tabs, sonner) on reka-ui
     │   ├── CycleRail.vue
@@ -443,6 +451,7 @@ Everything in modules 2–12 and 17 (Bills) is built and wired to real `localSto
 1. **Component library swap.** Original build used hand-written scoped CSS (`.btn`, `.card`, `.field` utility classes) per this doc. Replaced with Tailwind CSS v4 + hand-built shadcn-vue-style primitives on `reka-ui` (chosen over Vuetify specifically to preserve this doc's bespoke Ledger palette/typography rather than adopt Material Design), and emoji-as-UI-icons swapped for Lucide (`@lucide/vue`) everywhere except category icons, which stay emoji because they're user-chosen data.
 2. **Routing + responsive layout.** Original build switched views via a single `currentView` ref ([§1.1](#11-tech-stack)) with no URLs and no mobile consideration. Added `vue-router` (hash history, one route per sidebar item) and a responsive `AppSidebar` — a persistent hamburger toggle in the header collapses/expands the sidebar; the collapsed/expanded state is saved to `localStorage` and survives reloads on desktop, while on mobile the same control opens an overlay drawer that closes on navigation or backdrop tap (kept session-only, not persisted, since a drawer that reopens over the whole screen on every load would be worse UX than remembering a desktop preference).
 3. **Bills module added.** Not part of the original spec pass — added per a later request, documented fully in [§17](#17-module-bills). Picked up a `Tabs` primitive (`components/ui/tabs/`, on `reka-ui`) and `utils/attachments.js` (IndexedDB) along the way; both listed in [§1.1](#11-tech-stack) and [§1.3](#13-folder-structure).
+4. **PWA conversion.** Added `vite-plugin-pwa` (Workbox `generateSW` mode): a web app manifest (`public/manifest.webmanifest`, generated at build) with a Ledger-palette "Rs" icon in the required sizes (192/512/maskable-512/apple-touch/favicons — sourced from `assets-src/*.svg`, rasterized by `scripts/gen-icons.mjs`), and a precaching service worker covering the full app shell (JS/CSS/HTML/fonts/icons). Update strategy is `registerType: 'prompt'` — `main.js` calls `registerSW()` and surfaces a "Reload" action via the existing `vue-sonner` toast (same pattern as the Expenses undo-delete toast) rather than auto-swapping the app under the user. Fraunces/IBM Plex Mono/Inter moved from the Google Fonts CDN to self-hosted woff2 files (`src/assets/fonts/`, latin subset only) so the app is installable and fully offline from the first load, not just repeat visits — this doubles as the fix for the CDN dependency called out nowhere else in this doc but present in the original `index.html`. `useInstallPrompt.js` wraps the `beforeinstallprompt`/`appinstalled` events; Settings ([§11](#11-module-settings)) shows an "Install app" card when the browser reports the app is installable, or an "installed" note when running in standalone display mode.
 
 
 ---
