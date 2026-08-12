@@ -1,7 +1,7 @@
 <script setup>
 import { watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { LayoutDashboard, Receipt, ReceiptText, Repeat, Tags, Target, Lock, Package, Settings, Sun, Moon, BookText } from '@lucide/vue'
+import { LayoutDashboard, Receipt, Banknote, ReceiptText, Repeat, Tags, Target, Lock, Package, Bike, HandCoins, Settings, Sun, Moon, BookText } from '@lucide/vue'
 import { useSettings } from '../composables/useSettings.js'
 import { useSidebar } from '../composables/useSidebar.js'
 import { cn } from '@/lib/utils.js'
@@ -24,12 +24,15 @@ watch(
 const items = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/expenses', label: 'Expenses', icon: Receipt },
+  { path: '/income', label: 'Income', icon: Banknote },
   { path: '/bills', label: 'Bills', icon: ReceiptText },
   { path: '/recurring', label: 'Recurring', icon: Repeat },
   { path: '/categories', label: 'Categories', icon: Tags },
   { path: '/budget', label: 'Budget', icon: Target },
   { path: '/vault', label: 'Vault', icon: Lock },
   { path: '/assets', label: 'Assets', icon: Package },
+  { path: '/vehicles', label: 'Vehicles', icon: Bike },
+  { path: '/lending', label: 'Lending', icon: HandCoins },
   { path: '/settings', label: 'Settings', icon: Settings },
 ]
 </script>
@@ -64,7 +67,7 @@ const items = [
           :class="
             cn(
               'flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
-              route.path === item.path && 'bg-accent font-medium text-primary'
+              (route.path === item.path || route.path.startsWith(item.path + '/')) && 'bg-accent font-medium text-primary'
             )
           "
         >

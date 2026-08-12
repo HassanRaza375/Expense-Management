@@ -49,6 +49,11 @@ function exportMain() {
     expenses: get(STORAGE_KEYS.EXPENSES, []),
     recurring: get(STORAGE_KEYS.RECURRING, []),
     bills: get(STORAGE_KEYS.BILLS, { connections: [], bills: [] }),
+    income: get(STORAGE_KEYS.INCOME, []),
+    vehicles: get(STORAGE_KEYS.VEHICLES, []),
+    vehicleLogs: get(STORAGE_KEYS.VEHICLE_LOGS, []),
+    fuelLogs: get(STORAGE_KEYS.FUEL_LOGS, []),
+    lending: get(STORAGE_KEYS.LENDING, []),
   }
   downloadJSON(bundle, `hisaab-backup-${new Date().toISOString().slice(0, 10)}.json`)
 }
@@ -114,6 +119,11 @@ function confirmImport() {
     if (data.expenses) set(STORAGE_KEYS.EXPENSES, data.expenses)
     if (data.recurring) set(STORAGE_KEYS.RECURRING, data.recurring)
     if (data.bills) set(STORAGE_KEYS.BILLS, data.bills)
+    if (data.income) set(STORAGE_KEYS.INCOME, data.income)
+    if (data.vehicles) set(STORAGE_KEYS.VEHICLES, data.vehicles)
+    if (data.vehicleLogs) set(STORAGE_KEYS.VEHICLE_LOGS, data.vehicleLogs)
+    if (data.fuelLogs) set(STORAGE_KEYS.FUEL_LOGS, data.fuelLogs)
+    if (data.lending) set(STORAGE_KEYS.LENDING, data.lending)
   } else if (importKind.value === 'vault') {
     if (data.vault) set(STORAGE_KEYS.VAULT, data.vault)
     if (data.assets) set(STORAGE_KEYS.ASSETS, data.assets)

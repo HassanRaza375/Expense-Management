@@ -1,0 +1,128 @@
+import { reactive, watch } from 'vue'
+import { get, set, STORAGE_KEYS } from '../utils/storage.js'
+import { generateId } from '../utils/id.js'
+
+const state = reactive(get(STORAGE_KEYS.LENDING, []))
+
+watch(
+  state,
+  (val) => {
+    set(STORAGE_KEYS.LENDING, val)
+  },
+  { deep: true }
+)
+
+let pendingUndo = null
+
+export function useLending() {
+  function findById(id) {
+    return state.find((l) => l.id === id)
+  }
+
+  function totalRepaid(loan) {
+    return loan.repayments.reduce((sum, r) => sum + r.amount, 0)
+  }
+
+  function remaining(loan) {
+    return Math.max(loan.amount - totalRepaid(loan), 0)
+  }
+
+  function status(loan) {
+    const repaid = totalRepaid(loan)
+    if (repaid >= loan.amount) return 'paid'
+    if (repaid > 0) return 'partial'
+    return 'outstanding'
+  }
+
+  function addLoan({ borrowerName, amount, date, dueDate, notes }) {
+    if (!borrowerName || !borrowerName.trim()) throw new Error('Borrower name is required')
+    const amt = Number(amount)
+    if (!(amt > 0)) throw new Error('Amount must be greater than 0')
+    const loan = {
+      id: generateId(),
+      borrowerName: borrowerName.trim(),
+      amount: amt,
+      date: date || new Date().toISOString(),
+      dueDate: dueDate || null,
+      notes: notes || '',
+      repayments: [],
+      createdAt: new Date().toISOString(),
+    }
+    state.push(loan)
+    return loan
+  }
+
+  function updateLoan(id, patch) {
+    const loan = findById(id)
+    if (!loan) return
+    if (patch.borrowerName !== undefined) {
+      if (!patch.borrowerName.trim()) throw new Error('Borrower name is required')
+      loan.borrowerName = patch.borrowerName.trim()
+    }
+    if (patch.amount !== undefined) {
+      const amt = Number(patch.amount)
+      if (!(amt > 0)) throw new Error('Amount must be greater than 0')
+      if (amt < totalRepaid(loan)) throw new Error('Amount cannot be less than what has already been repaid')
+      loan.amount = amt
+    }
+    if (patch.date !== undefined) loan.date = patch.date
+    if (patch.dueDate !== undefined) loan.dueDate = patch.dueDate
+    if (patch.notes !== undefined) loan.notes = patch.notes
+  }
+
+  function deleteLoan(id) {
+    const idx = state.findIndex((l) => l.id === id)
+    if (idx === -1) return null
+    const [removed] = state.splice(idx, 1)
+    pendingUndo = removed
+    return removed
+  }
+
+  function undoDelete() {
+    if (pendingUndo) {
+      state.push(pendingUndo)
+      pendingUndo = null
+    }
+  }
+
+  function addRepayment(loanId, { date, amount, notes }) {
+    const loan = findById(loanId)
+    if (!loan) throw new Error('Loan not found')
+    const amt = Number(amount)
+    if (!(amt > 0)) throw new Error('Amount must be greater than 0')
+    if (amt > remaining(loan)) throw new Error('Repayment exceeds remaining balance')
+    loan.repayments.push({
+      id: generateId(),
+      date: date || new Date().toISOString(),
+      amount: amt,
+      notes: notes || '',
+      createdAt: new Date().toISOString(),
+    })
+  }
+
+  function deleteRepayment(loanId, repaymentId) {
+    const loan = findById(loanId)
+    if (!loan) return
+    const idx = loan.repayments.findIndex((r) => r.id === repaymentId)
+    if (idx !== -1) loan.repayments.splice(idx, 1)
+  }
+
+  function totalOutstanding() {
+    return state.reduce((sum, loan) => sum + remaining(loan), 0)
+  }
+
+  return {
+    loans: state,
+    findById,
+    totalRepaid,
+    remaining,
+    status,
+    addLoan,
+    updateLoan,
+    deleteLoan,
+    undoDelete,
+    addRepayment,
+    deleteRepayment,
+    totalOutstanding,
+  }
+}

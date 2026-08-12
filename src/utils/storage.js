@@ -63,5 +63,10 @@ export const STORAGE_KEYS = {
   VAULT: 'vault',
   ASSETS: 'assets',
   BILLS: 'bills',
+  VEHICLES: 'vehicles',
+  VEHICLE_LOGS: 'vehicleLogs',
+  FUEL_LOGS: 'fuelLogs',
+  INCOME: 'income',
+  LENDING: 'lending',
   META: 'meta',
 }

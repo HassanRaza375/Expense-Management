@@ -1,15 +1,22 @@
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Wallet, PiggyBank, CalendarClock, BellRing, Gauge, Flame, Crown, TrendingUp } from '@lucide/vue'
+import { Wallet, PiggyBank, CalendarClock, BellRing, Gauge, Flame, Crown, TrendingUp, TrendingDown, CalendarDays, Wrench, Banknote, Percent, ReceiptText, Package, HandCoins } from '@lucide/vue'
 import { useBudget } from '../composables/useBudget.js'
 import { useSettings } from '../composables/useSettings.js'
 import { useRecurring } from '../composables/useRecurring.js'
 import { useExpenses } from '../composables/useExpenses.js'
+import { useCategories } from '../composables/useCategories.js'
+import { useVehicles } from '../composables/useVehicles.js'
+import { useVehicleMaintenance, LOG_TYPE_LABELS } from '../composables/useVehicleMaintenance.js'
+import { useBills } from '../composables/useBills.js'
+import { useAssets } from '../composables/useAssets.js'
+import { useLending } from '../composables/useLending.js'
 import { formatCurrency } from '../utils/currency.js'
 import { formatDate } from '../utils/date.js'
 import { Card, CardContent } from '@/components/ui/card/index.js'
 import { Button } from '@/components/ui/button/index.js'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs/index.js'
 import CycleRail from '../components/CycleRail.vue'
 import StatCard from '../components/StatCard.vue'
 import DonutChart from '../components/DonutChart.vue'
@@ -21,7 +28,15 @@ const router = useRouter()
 const { settings } = useSettings()
 const budget = useBudget()
 const { getPending, sortedByDueDate, stampConfirmed } = useRecurring()
-const { addExpense, groupedByDay } = useExpenses()
+const { addExpense, expenses, groupedByDay, groupedByWeek, groupedByMonth } = useExpenses()
+const { categories } = useCategories()
+const { vehicles } = useVehicles()
+const { dueSoon } = useVehicleMaintenance()
+const { bills, outstandingAmount, unpaidCount, overdueCount } = useBills()
+const { assets, totalValue: totalAssetValue } = useAssets()
+const { loans, totalOutstanding: totalLoansOutstanding } = useLending()
+
+const hasMoneyOverviewData = computed(() => bills.length > 0 || assets.length > 0 || loans.length > 0)
 
 const pending = computed(() => getPending(budget.cycle.value))
 const upcomingDueDates = computed(() =>
@@ -31,9 +46,23 @@ const upcomingDueDates = computed(() =>
     .map((day) => new Date(budget.cycle.value.start.getFullYear(), budget.cycle.value.start.getMonth(), day))
 )
 
+const viewMode = ref('day')
+
 const trendPoints = computed(() => {
-  const groups = groupedByDay(budget.cycleExpenses.value)
-  return groups
+  if (viewMode.value === 'week') {
+    return groupedByWeek(budget.cycleExpenses.value)
+      .slice()
+      .reverse()
+      .map((g) => ({ date: g.week, total: g.total }))
+  }
+  if (viewMode.value === 'month') {
+    return groupedByMonth(expenses)
+      .slice(0, 6)
+      .slice()
+      .reverse()
+      .map((g) => ({ date: g.month + '-01', total: g.total }))
+  }
+  return groupedByDay(budget.cycleExpenses.value)
     .slice()
     .reverse()
     .map((g) => ({ date: g.day, total: g.total }))
@@ -45,7 +74,15 @@ const donutSegments = computed(() =>
     .map((c) => ({ label: c.category.name, value: c.spent, color: c.category.color }))
 )
 
-const hasAnyData = computed(() => budget.cycleExpenses.value.length > 0)
+const hasAnyData = computed(() => budget.cycleExpenses.value.length > 0 || budget.cycleIncome.value > 0)
+
+const vehicleCategoryIds = computed(() =>
+  categories.filter((c) => ['vehicle maintenance', 'fuel'].includes(c.name.toLowerCase())).map((c) => c.id)
+)
+const vehicleCycleCost = computed(() =>
+  budget.cycleExpenses.value.filter((e) => vehicleCategoryIds.value.includes(e.categoryId)).reduce((sum, e) => sum + e.amount, 0)
+)
+const upcomingMaintenance = computed(() => dueSoon().slice(0, 3))
 
 function handleAdd(template, amount) {
   addExpense({
@@ -86,6 +123,23 @@ function handleSnooze() {
       </div>
     </section>
 
+    <section v-if="upcomingMaintenance.length" class="flex flex-col gap-3">
+      <h2 class="flex items-center gap-2 text-base font-semibold">
+        <Wrench class="h-4 w-4 text-status-warn" /> Maintenance due soon
+      </h2>
+      <div class="flex flex-col gap-2">
+        <Card v-for="log in upcomingMaintenance" :key="log.id" class="cursor-pointer" @click="router.push('/vehicles/' + log.vehicleId)">
+          <CardContent class="flex items-center justify-between p-3">
+            <span class="text-sm">{{ LOG_TYPE_LABELS[log.type] }}<span v-if="log.title"> — {{ log.title }}</span></span>
+            <span class="text-xs text-muted-foreground">
+              <span v-if="log.nextDueDate">by {{ formatDate(log.nextDueDate, 'short') }}</span>
+              <span v-if="log.nextDueOdometer"> · at {{ log.nextDueOdometer.toLocaleString() }} km</span>
+            </span>
+          </CardContent>
+        </Card>
+      </div>
+    </section>
+
     <Card>
       <CardContent class="p-4">
         <CycleRail :cycle="budget.cycle.value" :is-over-budget="budget.overallStatus.value === 'over'" :due-ticks="upcomingDueDates" />
@@ -102,7 +156,24 @@ function handleSnooze() {
 
     <template v-else>
       <section class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard :icon="Banknote" label="Income this cycle" :value="formatCurrency(budget.cycleIncome.value, settings.currencySymbol)" />
+        <StatCard
+          :icon="budget.netCashflow.value >= 0 ? TrendingUp : TrendingDown"
+          label="Net cashflow"
+          :value="formatCurrency(budget.netCashflow.value, settings.currencySymbol)"
+          :status="budget.netCashflow.value >= 0 ? 'good' : 'over'"
+          sub="Income − spent"
+        />
+        <StatCard
+          :icon="Percent"
+          label="Savings rate"
+          :value="budget.cycleIncome.value > 0 ? budget.savingsRate.value.toFixed(0) + '%' : '—'"
+          :status="budget.savingsRate.value >= 0 ? 'good' : 'over'"
+        />
         <StatCard :icon="Wallet" label="Spent this cycle" :value="formatCurrency(budget.cycleSpent.value, settings.currencySymbol)" />
+      </section>
+
+      <section class="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard
           :icon="PiggyBank"
           label="Remaining"
@@ -142,6 +213,45 @@ function handleSnooze() {
         />
       </section>
 
+      <section class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard
+          :icon="CalendarDays"
+          label="Daily average"
+          :value="formatCurrency(budget.dailyAverageThisCycle.value, settings.currencySymbol)"
+          sub="This cycle"
+        />
+        <StatCard
+          v-if="budget.highestSpendDay.value"
+          :icon="Flame"
+          label="Highest spend day"
+          :value="formatCurrency(budget.highestSpendDay.value.total, settings.currencySymbol)"
+          :sub="formatDate(budget.highestSpendDay.value.day, 'short')"
+        />
+      </section>
+
+      <section v-if="vehicles.length" class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard :icon="Wallet" label="Vehicles tracked" :value="String(vehicles.length)" />
+        <StatCard label="Vehicle spend this cycle" :value="formatCurrency(vehicleCycleCost, settings.currencySymbol)" />
+        <StatCard :icon="Wrench" label="Maintenance due soon" :value="String(dueSoon().length)" :status="dueSoon().length ? 'warn' : ''" />
+      </section>
+
+      <section v-if="hasMoneyOverviewData" class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard
+          :icon="ReceiptText"
+          label="Bills outstanding"
+          :value="formatCurrency(outstandingAmount(), settings.currencySymbol)"
+          :sub="overdueCount() ? overdueCount() + ' overdue' : unpaidCount() + ' unpaid'"
+          :status="overdueCount() ? 'over' : unpaidCount() ? 'warn' : 'good'"
+        />
+        <StatCard :icon="Package" label="Assets owned" :value="formatCurrency(totalAssetValue(), settings.currencySymbol)" />
+        <StatCard
+          :icon="HandCoins"
+          label="Owed to you"
+          :value="formatCurrency(totalLoansOutstanding(), settings.currencySymbol)"
+          sub="Outstanding loans given"
+        />
+      </section>
+
       <section class="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
           <CardContent class="p-4">
@@ -151,7 +261,16 @@ function handleSnooze() {
         </Card>
         <Card>
           <CardContent class="p-4">
-            <h3 class="mb-3 text-sm font-semibold">Daily trend</h3>
+            <div class="mb-3 flex items-center justify-between">
+              <h3 class="text-sm font-semibold">Spending trend</h3>
+              <Tabs v-model="viewMode">
+                <TabsList>
+                  <TabsTrigger value="day">Day</TabsTrigger>
+                  <TabsTrigger value="week">Week</TabsTrigger>
+                  <TabsTrigger value="month">Month</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
             <TrendChart :points="trendPoints" />
           </CardContent>
         </Card>

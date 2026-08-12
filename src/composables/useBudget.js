@@ -2,7 +2,8 @@ import { computed } from 'vue'
 import { useSettings } from './useSettings.js'
 import { useExpenses } from './useExpenses.js'
 import { useCategories } from './useCategories.js'
-import { getCycle, getAdjacentCycle, daysLeft } from '../utils/date.js'
+import { useIncome } from './useIncome.js'
+import { getCycle, getAdjacentCycle, daysLeft, daysElapsed, isWithinCycle } from '../utils/date.js'
 
 export function statusForPercent(percent) {
   if (percent > 100) return 'over'
@@ -12,8 +13,9 @@ export function statusForPercent(percent) {
 
 export function useBudget(referenceDate = new Date()) {
   const { settings } = useSettings()
-  const { expenses, inCycle } = useExpenses()
+  const { expenses, inCycle, groupedByDay } = useExpenses()
   const { categories } = useCategories()
+  const { income: incomeState } = useIncome()
 
   const cycle = computed(() => getCycle(referenceDate, settings.cycleResetDay))
   const previousCycle = computed(() => getAdjacentCycle(cycle.value.start, settings.cycleResetDay, -1))
@@ -82,6 +84,22 @@ export function useBudget(referenceDate = new Date()) {
     return cycleExpenses.value.slice().sort((a, b) => b.amount - a.amount)[0] || null
   })
 
+  const dailyAverageThisCycle = computed(() => {
+    const elapsed = daysElapsed(cycle.value, referenceDate)
+    return elapsed > 0 ? cycleSpent.value / elapsed : 0
+  })
+
+  const highestSpendDay = computed(() => {
+    const days = groupedByDay(cycleExpenses.value)
+    return days.slice().sort((a, b) => b.total - a.total)[0] || null
+  })
+
+  const cycleIncome = computed(() => incomeState.filter((i) => isWithinCycle(i.date, cycle.value)).reduce((sum, i) => sum + i.amount, 0))
+
+  const netCashflow = computed(() => cycleIncome.value - cycleSpent.value)
+
+  const savingsRate = computed(() => (cycleIncome.value > 0 ? (netCashflow.value / cycleIncome.value) * 100 : 0))
+
   const alerts = computed(() => {
     const list = []
     if (overallPercentUsed.value >= 100) list.push({ scope: 'overall', level: 'over', message: 'Over overall budget' })
@@ -116,6 +134,11 @@ export function useBudget(referenceDate = new Date()) {
     cycleOverCycleChange,
     topCategory,
     biggestExpense,
+    dailyAverageThisCycle,
+    highestSpendDay,
+    cycleIncome,
+    netCashflow,
+    savingsRate,
     alerts,
     applyRollover,
   }

@@ -116,6 +116,42 @@ export function useExpenses() {
       }))
   }
 
+  function groupedByWeek(list) {
+    const groups = {}
+    for (const e of list) {
+      const d = new Date(e.date)
+      const weekStart = new Date(d)
+      weekStart.setHours(0, 0, 0, 0)
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay())
+      const key = weekStart.toISOString().slice(0, 10)
+      if (!groups[key]) groups[key] = []
+      groups[key].push(e)
+    }
+    return Object.entries(groups)
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .map(([week, items]) => ({
+        week,
+        items,
+        total: items.reduce((sum, e) => sum + e.amount, 0),
+      }))
+  }
+
+  function groupedByMonth(list) {
+    const groups = {}
+    for (const e of list) {
+      const key = e.date.slice(0, 7)
+      if (!groups[key]) groups[key] = []
+      groups[key].push(e)
+    }
+    return Object.entries(groups)
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .map(([month, items]) => ({
+        month,
+        items,
+        total: items.reduce((sum, e) => sum + e.amount, 0),
+      }))
+  }
+
   return {
     expenses: state,
     findById,
@@ -128,5 +164,7 @@ export function useExpenses() {
     reassignCategory,
     inCycle,
     groupedByDay,
+    groupedByWeek,
+    groupedByMonth,
   }
 }
