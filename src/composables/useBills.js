@@ -72,6 +72,10 @@ export function useConnections() {
     return state.connections.filter((c) => c.billType === 'electricity' && c.id !== excludeId).length
   }
 
+  function meteredConnections() {
+    return state.connections.filter((c) => METERED_BILL_TYPES.includes(c.billType))
+  }
+
   function addConnection({ connectionName, provider, billType, consumerNumber, referenceNumber, accountNumber, meterNumber }) {
     if (!connectionName || !connectionName.trim()) throw new Error('Connection name is required')
     if (!billType) throw new Error('Bill type is required')
@@ -124,6 +128,7 @@ export function useConnections() {
     connections: state.connections,
     findConnection,
     electricityCount,
+    meteredConnections,
     addConnection,
     updateConnection,
     toggleActive,
@@ -374,6 +379,33 @@ export function useBills() {
     return ((curr.total - prev.total) / prev.total) * 100
   }
 
+  // ---- Consumption (meter readings) ----
+
+  function consumptionHistory(connectionId) {
+    return state.bills
+      .filter((b) => b.connectionId === connectionId && b.unitsUsed != null)
+      .slice()
+      .sort((a, b) => (a.billingMonth < b.billingMonth ? -1 : 1))
+      .map((b) => ({
+        billId: b.id,
+        billingMonth: b.billingMonth,
+        previousReading: b.previousReading,
+        currentReading: b.currentReading,
+        unitsUsed: b.unitsUsed,
+      }))
+  }
+
+  function latestReading(connectionId) {
+    const history = consumptionHistory(connectionId)
+    return history[history.length - 1] || null
+  }
+
+  function averageMonthlyUnits(connectionId) {
+    const history = consumptionHistory(connectionId)
+    if (!history.length) return 0
+    return history.reduce((sum, h) => sum + h.unitsUsed, 0) / history.length
+  }
+
   return {
     bills: state.bills,
     findBill,
@@ -398,5 +430,8 @@ export function useBills() {
     spendingByType,
     monthlySpending,
     monthOverMonthChange,
+    consumptionHistory,
+    latestReading,
+    averageMonthlyUnits,
   }
 }

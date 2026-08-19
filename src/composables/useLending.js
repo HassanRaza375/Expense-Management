@@ -12,11 +12,25 @@ watch(
   { deep: true }
 )
 
+export const LOAN_DIRECTIONS = ['lent', 'borrowed']
+
 let pendingUndo = null
 
 export function useLending() {
   function findById(id) {
     return state.find((l) => l.id === id)
+  }
+
+  function direction(loan) {
+    return loan.direction === 'borrowed' ? 'borrowed' : 'lent'
+  }
+
+  function personName(loan) {
+    return loan.personName ?? loan.borrowerName ?? ''
+  }
+
+  function loansByDirection(dir) {
+    return state.filter((l) => direction(l) === dir)
   }
 
   function totalRepaid(loan) {
@@ -34,13 +48,14 @@ export function useLending() {
     return 'outstanding'
   }
 
-  function addLoan({ borrowerName, amount, date, dueDate, notes }) {
-    if (!borrowerName || !borrowerName.trim()) throw new Error('Borrower name is required')
+  function addLoan({ direction: dir, personName: name, amount, date, dueDate, notes }) {
+    if (!name || !name.trim()) throw new Error('Name is required')
     const amt = Number(amount)
     if (!(amt > 0)) throw new Error('Amount must be greater than 0')
     const loan = {
       id: generateId(),
-      borrowerName: borrowerName.trim(),
+      direction: LOAN_DIRECTIONS.includes(dir) ? dir : 'lent',
+      personName: name.trim(),
       amount: amt,
       date: date || new Date().toISOString(),
       dueDate: dueDate || null,
@@ -55,9 +70,9 @@ export function useLending() {
   function updateLoan(id, patch) {
     const loan = findById(id)
     if (!loan) return
-    if (patch.borrowerName !== undefined) {
-      if (!patch.borrowerName.trim()) throw new Error('Borrower name is required')
-      loan.borrowerName = patch.borrowerName.trim()
+    if (patch.personName !== undefined) {
+      if (!patch.personName.trim()) throw new Error('Name is required')
+      loan.personName = patch.personName.trim()
     }
     if (patch.amount !== undefined) {
       const amt = Number(patch.amount)
@@ -107,13 +122,17 @@ export function useLending() {
     if (idx !== -1) loan.repayments.splice(idx, 1)
   }
 
-  function totalOutstanding() {
-    return state.reduce((sum, loan) => sum + remaining(loan), 0)
+  function totalOutstanding(dir) {
+    const list = dir ? loansByDirection(dir) : state
+    return list.reduce((sum, loan) => sum + remaining(loan), 0)
   }
 
   return {
     loans: state,
     findById,
+    direction,
+    personName,
+    loansByDirection,
     totalRepaid,
     remaining,
     status,

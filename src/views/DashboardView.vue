@@ -35,6 +35,8 @@ const { dueSoon } = useVehicleMaintenance()
 const { bills, outstandingAmount, unpaidCount, overdueCount } = useBills()
 const { assets, totalValue: totalAssetValue } = useAssets()
 const { loans, totalOutstanding: totalLoansOutstanding } = useLending()
+const owedToYou = computed(() => totalLoansOutstanding('lent'))
+const youOwe = computed(() => totalLoansOutstanding('borrowed'))
 
 const hasMoneyOverviewData = computed(() => bills.length > 0 || assets.length > 0 || loans.length > 0)
 
@@ -74,7 +76,15 @@ const donutSegments = computed(() =>
     .map((c) => ({ label: c.category.name, value: c.spent, color: c.category.color }))
 )
 
-const hasAnyData = computed(() => budget.cycleExpenses.value.length > 0 || budget.cycleIncome.value > 0)
+const hasAnyData = computed(
+  () =>
+    budget.cycleExpenses.value.length > 0 ||
+    budget.cycleIncome.value > 0 ||
+    bills.length > 0 ||
+    assets.length > 0 ||
+    loans.length > 0 ||
+    vehicles.length > 0
+)
 
 const vehicleCategoryIds = computed(() =>
   categories.filter((c) => ['vehicle maintenance', 'fuel'].includes(c.name.toLowerCase())).map((c) => c.id)
@@ -244,12 +254,8 @@ function handleSnooze() {
           :status="overdueCount() ? 'over' : unpaidCount() ? 'warn' : 'good'"
         />
         <StatCard :icon="Package" label="Assets owned" :value="formatCurrency(totalAssetValue(), settings.currencySymbol)" />
-        <StatCard
-          :icon="HandCoins"
-          label="Owed to you"
-          :value="formatCurrency(totalLoansOutstanding(), settings.currencySymbol)"
-          sub="Outstanding loans given"
-        />
+        <StatCard :icon="HandCoins" label="Owed to you" :value="formatCurrency(owedToYou, settings.currencySymbol)" sub="Money you've lent" status="good" />
+        <StatCard :icon="HandCoins" label="You owe" :value="formatCurrency(youOwe, settings.currencySymbol)" sub="Money you've borrowed" :status="youOwe > 0 ? 'warn' : 'good'" />
       </section>
 
       <section class="grid grid-cols-1 gap-4 lg:grid-cols-2">

@@ -17,9 +17,10 @@ import RepaymentFormModal from '../components/RepaymentFormModal.vue'
 const route = useRoute()
 const router = useRouter()
 const { settings } = useSettings()
-const { findById, updateLoan, totalRepaid, remaining, status, addRepayment, deleteRepayment } = useLending()
+const { findById, updateLoan, totalRepaid, remaining, status, direction, personName, addRepayment, deleteRepayment } = useLending()
 
 const loan = computed(() => findById(route.params.id))
+const isBorrowed = computed(() => loan.value && direction(loan.value) === 'borrowed')
 
 const statusBadge = { paid: 'good', partial: 'warn', outstanding: 'secondary' }
 const statusLabel = { paid: 'Paid', partial: 'Partially repaid', outstanding: 'Outstanding' }
@@ -80,9 +81,9 @@ function handleDeleteRepayment(repaymentId) {
         <div class="flex items-center gap-3">
           <HandCoins class="h-6 w-6 text-primary" />
           <div>
-            <h2 class="font-display text-xl">{{ loan.borrowerName }}</h2>
+            <h2 class="font-display text-xl">{{ personName(loan) }}</h2>
             <p class="m-0 text-sm text-muted-foreground">
-              Given {{ formatDate(loan.date, 'short') }}
+              {{ isBorrowed ? 'Borrowed' : 'Given' }} {{ formatDate(loan.date, 'short') }}
               <span v-if="loan.dueDate"> · Due {{ formatDate(loan.dueDate, 'short') }}</span>
             </p>
           </div>
@@ -95,8 +96,8 @@ function handleDeleteRepayment(repaymentId) {
     </Card>
 
     <section class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-      <StatCard label="Amount given" :value="formatCurrency(loan.amount, settings.currencySymbol)" />
-      <StatCard label="Repaid" :value="formatCurrency(totalRepaid(loan), settings.currencySymbol)" status="good" />
+      <StatCard :label="isBorrowed ? 'Amount borrowed' : 'Amount given'" :value="formatCurrency(loan.amount, settings.currencySymbol)" />
+      <StatCard :label="isBorrowed ? 'Paid back' : 'Repaid'" :value="formatCurrency(totalRepaid(loan), settings.currencySymbol)" status="good" />
       <StatCard label="Remaining" :value="formatCurrency(remaining(loan), settings.currencySymbol)" :status="remaining(loan) > 0 ? 'warn' : 'good'" />
     </section>
 
