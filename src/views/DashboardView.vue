@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Wallet, PiggyBank, CalendarClock, BellRing, Gauge, Flame, Crown, TrendingUp, TrendingDown, CalendarDays, Wrench, Banknote, Percent, ReceiptText, Package, HandCoins } from '@lucide/vue'
+import { Wallet, PiggyBank, CalendarClock, BellRing, Gauge, Flame, Crown, TrendingUp, TrendingDown, CalendarDays, Wrench, Banknote, Percent, ReceiptText, Package, HandCoins, Zap, Droplet } from '@lucide/vue'
 import { useBudget } from '../composables/useBudget.js'
 import { useSettings } from '../composables/useSettings.js'
 import { useRecurring } from '../composables/useRecurring.js'
@@ -9,7 +9,8 @@ import { useExpenses } from '../composables/useExpenses.js'
 import { useCategories } from '../composables/useCategories.js'
 import { useVehicles } from '../composables/useVehicles.js'
 import { useVehicleMaintenance, LOG_TYPE_LABELS } from '../composables/useVehicleMaintenance.js'
-import { useBills } from '../composables/useBills.js'
+import { useBills, useConnections } from '../composables/useBills.js'
+import { useMeterReadings } from '../composables/useMeterReadings.js'
 import { useAssets } from '../composables/useAssets.js'
 import { useLending } from '../composables/useLending.js'
 import { formatCurrency } from '../utils/currency.js'
@@ -33,6 +34,8 @@ const { categories } = useCategories()
 const { vehicles } = useVehicles()
 const { dueSoon } = useVehicleMaintenance()
 const { bills, outstandingAmount, unpaidCount, overdueCount } = useBills()
+const { meteredConnections } = useConnections()
+const { readingsForConnection, unitsSinceLast } = useMeterReadings()
 const { assets, totalValue: totalAssetValue } = useAssets()
 const { loans, totalOutstanding: totalLoansOutstanding } = useLending()
 const owedToYou = computed(() => totalLoansOutstanding('lent'))
@@ -83,7 +86,8 @@ const hasAnyData = computed(
     bills.length > 0 ||
     assets.length > 0 ||
     loans.length > 0 ||
-    vehicles.length > 0
+    vehicles.length > 0 ||
+    meteredConnections().length > 0
 )
 
 const vehicleCategoryIds = computed(() =>
@@ -93,6 +97,11 @@ const vehicleCycleCost = computed(() =>
   budget.cycleExpenses.value.filter((e) => vehicleCategoryIds.value.includes(e.categoryId)).reduce((sum, e) => sum + e.amount, 0)
 )
 const upcomingMaintenance = computed(() => dueSoon().slice(0, 3))
+
+const METER_TYPE_ICONS = { electricity: Zap, gas: Flame, water: Droplet }
+function latestReadingFor(connectionId) {
+  return readingsForConnection(connectionId)[0] || null
+}
 
 function handleAdd(template, amount) {
   addExpense({
@@ -256,6 +265,32 @@ function handleSnooze() {
         <StatCard :icon="Package" label="Assets owned" :value="formatCurrency(totalAssetValue(), settings.currencySymbol)" />
         <StatCard :icon="HandCoins" label="Owed to you" :value="formatCurrency(owedToYou, settings.currencySymbol)" sub="Money you've lent" status="good" />
         <StatCard :icon="HandCoins" label="You owe" :value="formatCurrency(youOwe, settings.currencySymbol)" sub="Money you've borrowed" :status="youOwe > 0 ? 'warn' : 'good'" />
+      </section>
+
+      <section v-if="meteredConnections().length" class="flex flex-col gap-3">
+        <h3 class="text-base font-semibold">Meter readings</h3>
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Card
+            v-for="c in meteredConnections()"
+            :key="c.id"
+            class="cursor-pointer transition-colors hover:border-primary"
+            @click="router.push('/bills/meters/' + c.id)"
+          >
+            <CardContent class="flex min-w-0 flex-col gap-1 p-4">
+              <div class="flex items-center gap-2">
+                <component :is="METER_TYPE_ICONS[c.billType] || Gauge" class="h-3.5 w-3.5 text-muted-foreground" />
+                <span class="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">{{ c.connectionName }}</span>
+              </div>
+              <div class="amount overflow-hidden text-ellipsis text-2xl font-semibold">
+                {{ latestReadingFor(c.id) ? latestReadingFor(c.id).reading.toLocaleString() : '—' }}
+              </div>
+              <div class="text-xs text-muted-foreground">
+                <span v-if="unitsSinceLast(c.id) != null">{{ unitsSinceLast(c.id) >= 0 ? '+' : '' }}{{ unitsSinceLast(c.id) }} since last</span>
+                <span v-else>No readings yet</span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </section>
 
       <section class="grid grid-cols-1 gap-4 lg:grid-cols-2">

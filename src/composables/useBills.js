@@ -4,6 +4,7 @@ import { generateId } from '../utils/id.js'
 import { putAttachment, deleteAttachment } from '../utils/attachments.js'
 import { useExpenses } from './useExpenses.js'
 import { useCategories } from './useCategories.js'
+import { useMeterReadings } from './useMeterReadings.js'
 import { startOfDay } from '../utils/date.js'
 
 export const BILL_TYPES = [
@@ -142,6 +143,7 @@ export function useConnections() {
 export function useBills() {
   const { addExpense, updateExpense } = useExpenses()
   const { findById: findCategoryById } = useCategories()
+  const meterReadings = useMeterReadings()
 
   function findBill(id) {
     return state.bills.find((b) => b.id === id)
@@ -159,10 +161,7 @@ export function useBills() {
   }
 
   function getPreviousReading(connectionId, excludeBillId = null) {
-    const priorBills = state.bills
-      .filter((b) => b.connectionId === connectionId && b.id !== excludeBillId && b.currentReading != null)
-      .sort((a, b) => (a.billingMonth < b.billingMonth ? 1 : -1))
-    return priorBills[0]?.currentReading ?? null
+    return meterReadings.latestReadingExcluding(connectionId, excludeBillId)?.reading ?? null
   }
 
   function nextInternalBillId() {
@@ -210,6 +209,7 @@ export function useBills() {
       createdAt: new Date().toISOString(),
     }
     state.bills.push(bill)
+    if (bill.currentReading != null) meterReadings.syncFromBill(bill)
     return bill
   }
 
@@ -222,7 +222,13 @@ export function useBills() {
     Object.assign(bill, patch)
     if (patch.currentReading !== undefined) {
       bill.currentReading = patch.currentReading !== '' && patch.currentReading != null ? Number(patch.currentReading) : null
+      bill.previousReading = getPreviousReading(bill.connectionId, bill.id)
       bill.unitsUsed = computeUnitsUsed(bill.previousReading, bill.currentReading)
+      if (bill.currentReading != null) {
+        meterReadings.syncFromBill(bill)
+      } else {
+        meterReadings.removeByBillId(bill.id)
+      }
     }
     if (patch.amount !== undefined) {
       bill.amount = Number(patch.amount)
@@ -238,6 +244,7 @@ export function useBills() {
     for (const att of bill.attachments) {
       deleteAttachment(att.id).catch(() => {})
     }
+    meterReadings.removeByBillId(bill.id)
     const idx = state.bills.findIndex((b) => b.id === id)
     if (idx !== -1) state.bills.splice(idx, 1)
   }
@@ -379,33 +386,6 @@ export function useBills() {
     return ((curr.total - prev.total) / prev.total) * 100
   }
 
-  // ---- Consumption (meter readings) ----
-
-  function consumptionHistory(connectionId) {
-    return state.bills
-      .filter((b) => b.connectionId === connectionId && b.unitsUsed != null)
-      .slice()
-      .sort((a, b) => (a.billingMonth < b.billingMonth ? -1 : 1))
-      .map((b) => ({
-        billId: b.id,
-        billingMonth: b.billingMonth,
-        previousReading: b.previousReading,
-        currentReading: b.currentReading,
-        unitsUsed: b.unitsUsed,
-      }))
-  }
-
-  function latestReading(connectionId) {
-    const history = consumptionHistory(connectionId)
-    return history[history.length - 1] || null
-  }
-
-  function averageMonthlyUnits(connectionId) {
-    const history = consumptionHistory(connectionId)
-    if (!history.length) return 0
-    return history.reduce((sum, h) => sum + h.unitsUsed, 0) / history.length
-  }
-
   return {
     bills: state.bills,
     findBill,
@@ -430,8 +410,5 @@ export function useBills() {
     spendingByType,
     monthlySpending,
     monthOverMonthChange,
-    consumptionHistory,
-    latestReading,
-    averageMonthlyUnits,
   }
 }

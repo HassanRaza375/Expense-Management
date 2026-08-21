@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   Plus,
   Pencil,
@@ -20,6 +21,7 @@ import {
   Gauge,
 } from '@lucide/vue'
 import { useBills, useConnections, BILL_TYPES, BILL_STATUSES, MAX_ELECTRICITY_CONNECTIONS } from '../composables/useBills.js'
+import { useMeterReadings } from '../composables/useMeterReadings.js'
 import { useSettings } from '../composables/useSettings.js'
 import { formatCurrency } from '../utils/currency.js'
 import { formatDate } from '../utils/date.js'
@@ -37,9 +39,11 @@ import BillPaymentModal from '../components/BillPaymentModal.vue'
 import ConnectionFormModal from '../components/ConnectionFormModal.vue'
 import { toast } from '@/components/ui/sonner/index.js'
 
+const router = useRouter()
 const settings = useSettings().settings
 const bills = useBills()
 const connections = useConnections()
+const meterReadings = useMeterReadings()
 
 const TYPE_ICONS = { electricity: Zap, gas: Flame, water: Droplet, internet: Wifi, mobile: Smartphone, rent: Home, other: FileText }
 const TYPE_COLORS = { electricity: '#D6963A', gas: '#D9695F', water: '#4A9498', internet: '#5FAE86', mobile: '#8FA0AC', rent: '#2E6E72', other: '#8FA0AC' }
@@ -135,20 +139,11 @@ const spendingByType = computed(() =>
 )
 const monthlyTrend = computed(() => bills.monthlySpending(6).map((m) => ({ date: `${m.month}-01`, total: m.total })))
 
-// ---- Consumption (meter readings) ----
+// ---- Meter readings ----
 const meteredConnections = computed(() => connections.meteredConnections())
-const consumptionConnectionId = ref('')
-watch(
-  meteredConnections,
-  (list) => {
-    if (!consumptionConnectionId.value && list.length) consumptionConnectionId.value = list[0].id
-  },
-  { immediate: true }
-)
-const consumptionHistory = computed(() => (consumptionConnectionId.value ? bills.consumptionHistory(consumptionConnectionId.value) : []))
-const consumptionTrend = computed(() => consumptionHistory.value.map((h) => ({ date: `${h.billingMonth}-01`, total: h.unitsUsed })))
-const latestReading = computed(() => (consumptionConnectionId.value ? bills.latestReading(consumptionConnectionId.value) : null))
-const averageMonthlyUnits = computed(() => (consumptionConnectionId.value ? bills.averageMonthlyUnits(consumptionConnectionId.value) : 0))
+function latestReadingFor(connectionId) {
+  return meterReadings.readingsForConnection(connectionId)[0] || null
+}
 </script>
 
 <template>
@@ -287,60 +282,36 @@ const averageMonthlyUnits = computed(() => (consumptionConnectionId.value ? bill
           </Card>
         </section>
 
-        <div class="mt-2 flex items-center justify-between">
-          <h3 class="text-base font-semibold">Meter consumption</h3>
-          <Select v-if="meteredConnections.length" v-model="consumptionConnectionId">
-            <SelectTrigger class="w-full sm:w-56"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="c in meteredConnections" :key="c.id" :value="c.id">{{ c.connectionName }}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <h3 class="mt-2 text-base font-semibold">Meter readings</h3>
 
         <Card v-if="!meteredConnections.length">
           <CardContent class="p-8 text-center text-muted-foreground">
-            No electricity, gas, or water connections yet — add one to start tracking meter consumption.
+            No electricity, gas, or water connections yet — add one to start tracking meter readings.
           </CardContent>
         </Card>
 
-        <template v-else>
-          <section class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <StatCard
-              :icon="Gauge"
-              label="Latest reading"
-              :value="latestReading ? latestReading.currentReading.toLocaleString() : '—'"
-              :sub="latestReading ? latestReading.billingMonth : ''"
-            />
-            <StatCard label="Latest units used" :value="latestReading ? latestReading.unitsUsed.toLocaleString() : '—'" />
-            <StatCard label="Average monthly units" :value="averageMonthlyUnits ? averageMonthlyUnits.toFixed(1) : '—'" />
-          </section>
-
-          <Card>
-            <CardContent class="p-4">
-              <h3 class="mb-3 text-sm font-semibold">Units used over time</h3>
-              <TrendChart :points="consumptionTrend" />
+        <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Card
+            v-for="c in meteredConnections"
+            :key="c.id"
+            class="cursor-pointer transition-colors hover:border-primary"
+            @click="router.push('/bills/meters/' + c.id)"
+          >
+            <CardContent class="flex flex-col gap-2 p-4">
+              <div class="flex items-center gap-2">
+                <component :is="TYPE_ICONS[c.billType] || Gauge" class="h-4 w-4 text-muted-foreground" />
+                <strong>{{ c.connectionName }}</strong>
+              </div>
+              <div class="amount text-lg font-semibold">
+                {{ latestReadingFor(c.id) ? latestReadingFor(c.id).reading.toLocaleString() : '—' }}
+              </div>
+              <div class="text-xs text-muted-foreground">
+                <span v-if="latestReadingFor(c.id)">Last read {{ formatDate(latestReadingFor(c.id).date, 'short') }}</span>
+                <span v-else>No readings yet</span>
+              </div>
             </CardContent>
           </Card>
-
-          <Card v-if="!consumptionHistory.length">
-            <CardContent class="p-8 text-center text-muted-foreground"> No meter readings recorded yet for this connection. </CardContent>
-          </Card>
-
-          <Card v-else class="overflow-hidden py-0">
-            <div class="grid grid-cols-4 gap-2 border-b border-border bg-secondary/50 px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              <span>Billing month</span>
-              <span>Previous</span>
-              <span>Current</span>
-              <span>Units used</span>
-            </div>
-            <div v-for="h in consumptionHistory.slice().reverse()" :key="h.billId" class="grid grid-cols-4 gap-2 border-b border-border px-4 py-2.5 text-sm last:border-b-0">
-              <span>{{ h.billingMonth }}</span>
-              <span class="text-muted-foreground">{{ h.previousReading ?? '—' }}</span>
-              <span>{{ h.currentReading }}</span>
-              <span class="amount font-medium">{{ h.unitsUsed }}</span>
-            </div>
-          </Card>
-        </template>
+        </div>
       </TabsContent>
     </Tabs>
 

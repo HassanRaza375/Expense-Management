@@ -6,6 +6,7 @@ const routes = [
   { path: '/expenses', name: 'expenses', component: () => import('../views/ExpensesView.vue'), meta: { title: 'Expenses' } },
   { path: '/income', name: 'income', component: () => import('../views/IncomeView.vue'), meta: { title: 'Income' } },
   { path: '/bills', name: 'bills', component: () => import('../views/BillsView.vue'), meta: { title: 'Bills' } },
+  { path: '/bills/meters/:connectionId', name: 'meterReading', component: () => import('../views/MeterReadingView.vue'), meta: { title: 'Meter Reading' } },
   { path: '/recurring', name: 'recurring', component: () => import('../views/RecurringView.vue'), meta: { title: 'Recurring' } },
   { path: '/categories', name: 'categories', component: () => import('../views/CategoriesView.vue'), meta: { title: 'Categories' } },
   { path: '/budget', name: 'budget', component: () => import('../views/BudgetView.vue'), meta: { title: 'Budget' } },
