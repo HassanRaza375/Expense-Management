@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Wallet, PiggyBank, CalendarClock, BellRing, Gauge, Flame, Crown, TrendingUp, TrendingDown, CalendarDays, Wrench, Banknote, Percent, ReceiptText, Package, HandCoins, Zap, Droplet } from '@lucide/vue'
+import { Wallet, PiggyBank, CalendarClock, BellRing, Gauge, Flame, Crown, TrendingUp, TrendingDown, CalendarDays, Wrench, Banknote, Percent, ReceiptText, Package, HandCoins, Zap, Droplet, ChartCandlestick } from '@lucide/vue'
 import { useBudget } from '../composables/useBudget.js'
 import { useSettings } from '../composables/useSettings.js'
 import { useRecurring } from '../composables/useRecurring.js'
@@ -13,6 +13,7 @@ import { useBills, useConnections } from '../composables/useBills.js'
 import { useMeterReadings } from '../composables/useMeterReadings.js'
 import { useAssets } from '../composables/useAssets.js'
 import { useLending } from '../composables/useLending.js'
+import { useInvestments } from '../composables/useInvestments.js'
 import { formatCurrency } from '../utils/currency.js'
 import { formatDate } from '../utils/date.js'
 import { Card, CardContent } from '@/components/ui/card/index.js'
@@ -40,6 +41,7 @@ const { assets, totalValue: totalAssetValue } = useAssets()
 const { loans, totalOutstanding: totalLoansOutstanding } = useLending()
 const owedToYou = computed(() => totalLoansOutstanding('lent'))
 const youOwe = computed(() => totalLoansOutstanding('borrowed'))
+const { funds, currentValue: fundCurrentValue, profitLoss: fundProfitLoss, profitLossPercent: fundProfitLossPercent, changeSinceLast: fundChangeSinceLast } = useInvestments()
 
 const hasMoneyOverviewData = computed(() => bills.length > 0 || assets.length > 0 || loans.length > 0)
 
@@ -87,7 +89,8 @@ const hasAnyData = computed(
     assets.length > 0 ||
     loans.length > 0 ||
     vehicles.length > 0 ||
-    meteredConnections().length > 0
+    meteredConnections().length > 0 ||
+    funds.length > 0
 )
 
 const vehicleCategoryIds = computed(() =>
@@ -290,6 +293,27 @@ function handleSnooze() {
               </div>
             </CardContent>
           </Card>
+        </div>
+      </section>
+
+      <section v-if="funds.length" class="flex flex-col gap-3">
+        <h3 class="text-base font-semibold">Investments</h3>
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard
+            v-for="fund in funds"
+            :key="fund.id"
+            :icon="ChartCandlestick"
+            :label="fund.name"
+            :value="(fundProfitLoss(fund) >= 0 ? '+' : '') + fundProfitLossPercent(fund).toFixed(1) + '%'"
+            :sub="
+              fundChangeSinceLast(fund) != null
+                ? (fundChangeSinceLast(fund) >= 0 ? '+' : '') + formatCurrency(fundChangeSinceLast(fund), settings.currencySymbol) + ' since last'
+                : formatCurrency(fundCurrentValue(fund), settings.currencySymbol)
+            "
+            :status="fundProfitLoss(fund) >= 0 ? 'good' : 'over'"
+            class="cursor-pointer transition-colors hover:border-primary"
+            @click="router.push('/investments/' + fund.id)"
+          />
         </div>
       </section>
 

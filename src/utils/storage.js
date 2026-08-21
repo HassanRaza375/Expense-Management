@@ -69,5 +69,6 @@ export const STORAGE_KEYS = {
   INCOME: 'income',
   LENDING: 'lending',
   METER_READINGS: 'meterReadings',
+  INVESTMENTS: 'investments',
   META: 'meta',
 }

@@ -54,6 +54,8 @@ function exportMain() {
     vehicleLogs: get(STORAGE_KEYS.VEHICLE_LOGS, []),
     fuelLogs: get(STORAGE_KEYS.FUEL_LOGS, []),
     lending: get(STORAGE_KEYS.LENDING, []),
+    meterReadings: get(STORAGE_KEYS.METER_READINGS, []),
+    investments: get(STORAGE_KEYS.INVESTMENTS, []),
   }
   downloadJSON(bundle, `hisaab-backup-${new Date().toISOString().slice(0, 10)}.json`)
 }
@@ -124,6 +126,8 @@ function confirmImport() {
     if (data.vehicleLogs) set(STORAGE_KEYS.VEHICLE_LOGS, data.vehicleLogs)
     if (data.fuelLogs) set(STORAGE_KEYS.FUEL_LOGS, data.fuelLogs)
     if (data.lending) set(STORAGE_KEYS.LENDING, data.lending)
+    if (data.meterReadings) set(STORAGE_KEYS.METER_READINGS, data.meterReadings)
+    if (data.investments) set(STORAGE_KEYS.INVESTMENTS, data.investments)
   } else if (importKind.value === 'vault') {
     if (data.vault) set(STORAGE_KEYS.VAULT, data.vault)
     if (data.assets) set(STORAGE_KEYS.ASSETS, data.assets)
