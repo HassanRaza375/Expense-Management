@@ -53,6 +53,7 @@ function exportMain() {
     vehicles: get(STORAGE_KEYS.VEHICLES, []),
     vehicleLogs: get(STORAGE_KEYS.VEHICLE_LOGS, []),
     fuelLogs: get(STORAGE_KEYS.FUEL_LOGS, []),
+    vehicleTags: get(STORAGE_KEYS.VEHICLE_TAGS, []),
     lending: get(STORAGE_KEYS.LENDING, []),
     meterReadings: get(STORAGE_KEYS.METER_READINGS, []),
     investments: get(STORAGE_KEYS.INVESTMENTS, []),
@@ -125,6 +126,7 @@ function confirmImport() {
     if (data.vehicles) set(STORAGE_KEYS.VEHICLES, data.vehicles)
     if (data.vehicleLogs) set(STORAGE_KEYS.VEHICLE_LOGS, data.vehicleLogs)
     if (data.fuelLogs) set(STORAGE_KEYS.FUEL_LOGS, data.fuelLogs)
+    if (data.vehicleTags) set(STORAGE_KEYS.VEHICLE_TAGS, data.vehicleTags)
     if (data.lending) set(STORAGE_KEYS.LENDING, data.lending)
     if (data.meterReadings) set(STORAGE_KEYS.METER_READINGS, data.meterReadings)
     if (data.investments) set(STORAGE_KEYS.INVESTMENTS, data.investments)

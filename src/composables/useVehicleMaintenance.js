@@ -2,10 +2,34 @@ import { reactive, watch } from 'vue'
 import { get, set, STORAGE_KEYS } from '../utils/storage.js'
 import { generateId } from '../utils/id.js'
 import { useExpenses } from './useExpenses.js'
-import { useCategories } from './useCategories.js'
 import { useVehicles } from './useVehicles.js'
+import { DEFAULT_MAINTENANCE_TAG_ID } from './useVehicleTags.js'
 
 const state = reactive(get(STORAGE_KEYS.VEHICLE_LOGS, []))
+
+// One-time migration: maintenance logs used to auto-create a linked Expense and use a
+// fixed `type` field. Neither exists anymore — logs are now plain entries tagged via
+// useVehicleTags. Clean up old data in place so it matches the current shape.
+;(function migrateLegacyLogs() {
+  let changed = false
+  const { deleteExpense, findById: findExpense } = useExpenses()
+  for (const log of state) {
+    if (log.linkedExpenseId) {
+      if (findExpense(log.linkedExpenseId)) deleteExpense(log.linkedExpenseId)
+      log.linkedExpenseId = undefined
+      changed = true
+    }
+    if (log.tagId === undefined) {
+      log.tagId = log.type && log.type !== 'odometer' ? DEFAULT_MAINTENANCE_TAG_ID : null
+      changed = true
+    }
+    if (log.type !== undefined) {
+      log.type = undefined
+      changed = true
+    }
+  }
+  if (changed) set(STORAGE_KEYS.VEHICLE_LOGS, state)
+})()
 
 watch(
   state,
@@ -15,29 +39,9 @@ watch(
   { deep: true }
 )
 
-export const LOG_TYPES = ['odometer', 'oil_change', 'part', 'service', 'other']
-
-export const LOG_TYPE_LABELS = {
-  odometer: 'Odometer reading',
-  oil_change: 'Oil change',
-  part: 'Part replaced',
-  service: 'Service / tuning',
-  other: 'Other',
-}
-
-const MAINTENANCE_CATEGORY_NAME = 'Vehicle Maintenance'
-
 let pendingUndo = null
 
-function ensureMaintenanceCategory() {
-  const { categories, addCategory } = useCategories()
-  const existing = categories.find((c) => c.name.toLowerCase() === MAINTENANCE_CATEGORY_NAME.toLowerCase())
-  if (existing) return existing
-  return addCategory({ name: MAINTENANCE_CATEGORY_NAME, icon: '🏍️', color: '#4A9498' })
-}
-
 export function useVehicleMaintenance() {
-  const { addExpense, updateExpense, deleteExpense, findById: findExpense } = useExpenses()
   const { findById: findVehicle, bumpOdometer } = useVehicles()
 
   function findById(id) {
@@ -54,39 +58,24 @@ export function useVehicleMaintenance() {
     return logsForVehicle(vehicleId)[0] || null
   }
 
-  function addLog({ vehicleId, type, date, odometer, cost, title, vendor, nextDueOdometer, nextDueDate, notes }) {
+  function addLog({ vehicleId, tagId, date, odometer, cost, title, vendor, nextDueOdometer, nextDueDate, notes }) {
     if (!vehicleId) throw new Error('Vehicle is required')
     const vehicle = findVehicle(vehicleId)
     if (!vehicle) throw new Error('Vehicle not found')
-    const logType = LOG_TYPES.includes(type) ? type : 'other'
-    const amount = Number(cost) || 0
 
     const log = {
       id: generateId(),
       vehicleId,
-      type: logType,
+      tagId: tagId || null,
       date: date || new Date().toISOString(),
       odometer: odometer !== '' && odometer != null ? Number(odometer) : null,
-      cost: amount,
+      cost: Number(cost) || 0,
       title: title || '',
       vendor: vendor || '',
       nextDueOdometer: nextDueOdometer !== '' && nextDueOdometer != null ? Number(nextDueOdometer) : null,
       nextDueDate: nextDueDate || null,
       notes: notes || '',
-      linkedExpenseId: null,
       createdAt: new Date().toISOString(),
-    }
-
-    if (amount > 0) {
-      const category = ensureMaintenanceCategory()
-      const expense = addExpense({
-        date: log.date,
-        amount,
-        categoryId: category.id,
-        note: `${vehicle.name} — ${LOG_TYPE_LABELS[logType]}${title ? ': ' + title : ''}`,
-        source: 'manual',
-      })
-      log.linkedExpenseId = expense.id
     }
 
     if (log.odometer != null) bumpOdometer(vehicleId, log.odometer)
@@ -98,12 +87,13 @@ export function useVehicleMaintenance() {
   function updateLog(id, patch) {
     const log = findById(id)
     if (!log) return
-    if (patch.type !== undefined) log.type = LOG_TYPES.includes(patch.type) ? patch.type : 'other'
+    if (patch.tagId !== undefined) log.tagId = patch.tagId || null
     if (patch.date !== undefined) log.date = patch.date
     if (patch.odometer !== undefined) {
       log.odometer = patch.odometer !== '' && patch.odometer != null ? Number(patch.odometer) : null
       if (log.odometer != null) bumpOdometer(log.vehicleId, log.odometer)
     }
+    if (patch.cost !== undefined) log.cost = Number(patch.cost) || 0
     if (patch.title !== undefined) log.title = patch.title
     if (patch.vendor !== undefined) log.vendor = patch.vendor
     if (patch.nextDueOdometer !== undefined) {
@@ -111,54 +101,21 @@ export function useVehicleMaintenance() {
     }
     if (patch.nextDueDate !== undefined) log.nextDueDate = patch.nextDueDate
     if (patch.notes !== undefined) log.notes = patch.notes
-
-    if (patch.cost !== undefined) {
-      const amount = Number(patch.cost) || 0
-      log.cost = amount
-      if (log.linkedExpenseId && findExpense(log.linkedExpenseId)) {
-        if (amount > 0) {
-          updateExpense(log.linkedExpenseId, { amount, date: log.date })
-        } else {
-          deleteExpense(log.linkedExpenseId)
-          log.linkedExpenseId = null
-        }
-      } else if (amount > 0) {
-        const vehicle = findVehicle(log.vehicleId)
-        const category = ensureMaintenanceCategory()
-        const expense = addExpense({
-          date: log.date,
-          amount,
-          categoryId: category.id,
-          note: `${vehicle?.name || 'Vehicle'} — ${LOG_TYPE_LABELS[log.type]}${log.title ? ': ' + log.title : ''}`,
-          source: 'manual',
-        })
-        log.linkedExpenseId = expense.id
-      }
-    } else if (patch.date !== undefined && log.linkedExpenseId) {
-      updateExpense(log.linkedExpenseId, { date: log.date })
-    }
   }
 
   function deleteLog(id) {
     const idx = state.findIndex((l) => l.id === id)
     if (idx === -1) return null
     const [removed] = state.splice(idx, 1)
-    let removedExpense = null
-    if (removed.linkedExpenseId) {
-      removedExpense = deleteExpense(removed.linkedExpenseId)
-    }
-    pendingUndo = { log: removed, expense: removedExpense }
+    pendingUndo = removed
     return removed
   }
 
   function undoDelete() {
-    if (!pendingUndo) return
-    if (pendingUndo.expense) {
-      const { expenses } = useExpenses()
-      expenses.push(pendingUndo.expense)
+    if (pendingUndo) {
+      state.push(pendingUndo)
+      pendingUndo = null
     }
-    state.push(pendingUndo.log)
-    pendingUndo = null
   }
 
   function dueSoon(days = 14, km = 500) {
@@ -174,6 +131,12 @@ export function useVehicleMaintenance() {
 
   function totalCostForVehicle(vehicleId) {
     return logsForVehicle(vehicleId).reduce((sum, l) => sum + (l.cost || 0), 0)
+  }
+
+  function costInRange(vehicleId, start, end) {
+    return logsForVehicle(vehicleId)
+      .filter((l) => new Date(l.date) >= start && new Date(l.date) <= end)
+      .reduce((sum, l) => sum + (l.cost || 0), 0)
   }
 
   function groupedByMonth(list) {
@@ -203,6 +166,7 @@ export function useVehicleMaintenance() {
     undoDelete,
     dueSoon,
     totalCostForVehicle,
+    costInRange,
     groupedByMonth,
   }
 }

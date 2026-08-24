@@ -1,6 +1,6 @@
 <script setup>
 import { reactive, computed, watch } from 'vue'
-import { LOG_TYPES, LOG_TYPE_LABELS } from '../composables/useVehicleMaintenance.js'
+import { useVehicleTags } from '../composables/useVehicleTags.js'
 import { toInputDate } from '../utils/date.js'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog/index.js'
 import { Button } from '@/components/ui/button/index.js'
@@ -16,8 +16,12 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'save'])
 
+const { tags, findById: findTag } = useVehicleTags()
+
+const NO_TAG_VALUE = '__none__'
+
 const form = reactive({
-  type: 'odometer',
+  tagValue: NO_TAG_VALUE,
   date: toInputDate(new Date()),
   odometer: '',
   cost: '',
@@ -29,7 +33,7 @@ const form = reactive({
 })
 
 function resetForm() {
-  form.type = 'odometer'
+  form.tagValue = NO_TAG_VALUE
   form.date = toInputDate(new Date())
   form.odometer = ''
   form.cost = ''
@@ -45,7 +49,7 @@ watch(
   () => {
     if (!props.open) return
     if (props.log) {
-      form.type = props.log.type
+      form.tagValue = props.log.tagId || NO_TAG_VALUE
       form.date = toInputDate(props.log.date)
       form.odometer = props.log.odometer ?? ''
       form.cost = props.log.cost || ''
@@ -61,19 +65,19 @@ watch(
   { immediate: true }
 )
 
-const showCostFields = computed(() => form.type !== 'odometer')
-const showDueFields = computed(() => form.type === 'oil_change' || form.type === 'service')
+const selectedTag = computed(() => (form.tagValue !== NO_TAG_VALUE ? findTag(form.tagValue) : null))
+const showTaggedFields = computed(() => !!selectedTag.value)
 
 const error = reactive({ message: '' })
 
 function submit() {
   error.message = ''
-  if (form.type === 'odometer' && !(Number(form.odometer) > 0)) {
+  if (!showTaggedFields.value && !(Number(form.odometer) > 0)) {
     error.message = 'Odometer reading must be greater than 0'
     return
   }
   emit('save', {
-    type: form.type,
+    tagId: form.tagValue !== NO_TAG_VALUE ? form.tagValue : null,
     date: new Date(form.date).toISOString(),
     odometer: form.odometer,
     cost: form.cost,
@@ -95,13 +99,15 @@ function submit() {
 
       <div class="flex flex-col gap-3">
         <div class="flex flex-col gap-1.5">
-          <Label>Type</Label>
-          <Select v-model="form.type">
+          <Label>Tag</Label>
+          <Select v-model="form.tagValue">
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem v-for="t in LOG_TYPES" :key="t" :value="t">{{ LOG_TYPE_LABELS[t] }}</SelectItem>
+              <SelectItem :value="NO_TAG_VALUE">No tag (odometer reading only)</SelectItem>
+              <SelectItem v-for="t in tags" :key="t.id" :value="t.id">{{ t.icon }} {{ t.name }}</SelectItem>
             </SelectContent>
           </Select>
+          <p class="m-0 text-xs text-muted-foreground">Manage tags from the Vehicles page.</p>
         </div>
         <div class="flex flex-col gap-1.5">
           <Label>Date</Label>
@@ -112,9 +118,9 @@ function submit() {
           <Input v-model="form.odometer" type="number" min="0" placeholder="e.g. 12450" />
         </div>
 
-        <template v-if="showCostFields">
+        <template v-if="showTaggedFields">
           <div class="flex flex-col gap-1.5">
-            <Label>{{ LOG_TYPE_LABELS[form.type] }} — description</Label>
+            <Label>{{ selectedTag.name }} — description</Label>
             <Input v-model="form.title" type="text" placeholder="e.g. Engine oil + filter" />
           </div>
           <div class="flex flex-col gap-1.5">
@@ -125,9 +131,6 @@ function submit() {
             <Label>Shop / mechanic (optional)</Label>
             <Input v-model="form.vendor" type="text" />
           </div>
-        </template>
-
-        <template v-if="showDueFields">
           <div class="flex flex-col gap-1.5">
             <Label>Next due — odometer (optional)</Label>
             <Input v-model="form.nextDueOdometer" type="number" min="0" placeholder="e.g. 13000" />

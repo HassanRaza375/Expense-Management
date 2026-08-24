@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Bike, Car, AlertTriangle } from '@lucide/vue'
+import { Plus, Bike, Car, AlertTriangle, Tags } from '@lucide/vue'
 import { useVehicles } from '../composables/useVehicles.js'
 import { useVehicleMaintenance } from '../composables/useVehicleMaintenance.js'
 import { useFuelLogs } from '../composables/useFuelLogs.js'
@@ -10,6 +10,7 @@ import { Card, CardContent } from '@/components/ui/card/index.js'
 import { Button } from '@/components/ui/button/index.js'
 import { Badge } from '@/components/ui/badge/index.js'
 import VehicleFormModal from '../components/VehicleFormModal.vue'
+import VehicleTagsModal from '../components/VehicleTagsModal.vue'
 
 const router = useRouter()
 const { vehicles, addVehicle, updateVehicle, deleteVehicle } = useVehicles()
@@ -20,6 +21,7 @@ const modalOpen = ref(false)
 const editingVehicle = ref(null)
 const error = ref('')
 const deleteError = ref('')
+const tagsModalOpen = ref(false)
 
 function openAdd() {
   editingVehicle.value = null
@@ -74,7 +76,10 @@ const sortedVehicles = computed(() => [...vehicles].sort((a, b) => new Date(b.cr
         <h2 class="font-display text-xl">Vehicles</h2>
         <p class="mt-1 text-sm text-muted-foreground">Odometer, oil changes, parts, and service history for every bike and car.</p>
       </div>
-      <Button @click="openAdd"><Plus class="h-4 w-4" /> Add vehicle</Button>
+      <div class="flex gap-2">
+        <Button variant="outline" @click="tagsModalOpen = true"><Tags class="h-4 w-4" /> Manage tags</Button>
+        <Button @click="openAdd"><Plus class="h-4 w-4" /> Add vehicle</Button>
+      </div>
     </div>
 
     <p v-if="deleteError" class="m-0 text-sm text-destructive">{{ deleteError }}</p>
@@ -121,6 +126,7 @@ const sortedVehicles = computed(() => [...vehicles].sort((a, b) => new Date(b.cr
     </div>
 
     <VehicleFormModal :open="modalOpen" :vehicle="editingVehicle" @close="modalOpen = false" @save="handleSave" />
+    <VehicleTagsModal :open="tagsModalOpen" @close="tagsModalOpen = false" />
     <p v-if="error" class="m-0 text-sm text-destructive">{{ error }}</p>
   </div>
 </template>

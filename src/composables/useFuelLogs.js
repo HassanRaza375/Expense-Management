@@ -2,10 +2,24 @@ import { reactive, watch } from 'vue'
 import { get, set, STORAGE_KEYS } from '../utils/storage.js'
 import { generateId } from '../utils/id.js'
 import { useExpenses } from './useExpenses.js'
-import { useCategories } from './useCategories.js'
 import { useVehicles } from './useVehicles.js'
 
 const state = reactive(get(STORAGE_KEYS.FUEL_LOGS, []))
+
+// One-time migration: fuel entries used to auto-create a linked Expense. They no longer
+// do — a fuel log is just an entry. Remove any Expense rows created by past fuel logs.
+;(function migrateLegacyLogs() {
+  let changed = false
+  const { deleteExpense, findById: findExpense } = useExpenses()
+  for (const log of state) {
+    if (log.linkedExpenseId) {
+      if (findExpense(log.linkedExpenseId)) deleteExpense(log.linkedExpenseId)
+      log.linkedExpenseId = undefined
+      changed = true
+    }
+  }
+  if (changed) set(STORAGE_KEYS.FUEL_LOGS, state)
+})()
 
 watch(
   state,
@@ -15,19 +29,9 @@ watch(
   { deep: true }
 )
 
-const FUEL_CATEGORY_NAME = 'Fuel'
-
 let pendingUndo = null
 
-function ensureFuelCategory() {
-  const { categories, addCategory } = useCategories()
-  const existing = categories.find((c) => c.name.toLowerCase() === FUEL_CATEGORY_NAME.toLowerCase())
-  if (existing) return existing
-  return addCategory({ name: FUEL_CATEGORY_NAME, icon: '⛽', color: '#D6963A' })
-}
-
 export function useFuelLogs() {
-  const { addExpense, updateExpense, deleteExpense, findById: findExpense } = useExpenses()
   const { findById: findVehicle, bumpOdometer } = useVehicles()
 
   function findById(id) {
@@ -48,7 +52,6 @@ export function useFuelLogs() {
     if (!(litersNum > 0)) throw new Error('Liters must be greater than 0')
     const odometerNum = Number(odometer)
     if (!(odometerNum > 0)) throw new Error('Odometer reading must be greater than 0')
-    const amount = Number(cost) || 0
 
     const log = {
       id: generateId(),
@@ -56,24 +59,11 @@ export function useFuelLogs() {
       date: date || new Date().toISOString(),
       odometer: odometerNum,
       liters: litersNum,
-      cost: amount,
+      cost: Number(cost) || 0,
       fullTank: fullTank !== false,
       stationName: stationName || '',
       notes: notes || '',
-      linkedExpenseId: null,
       createdAt: new Date().toISOString(),
-    }
-
-    if (amount > 0) {
-      const category = ensureFuelCategory()
-      const expense = addExpense({
-        date: log.date,
-        amount,
-        categoryId: category.id,
-        note: `${vehicle.name} — Fuel (${litersNum} L)`,
-        source: 'manual',
-      })
-      log.linkedExpenseId = expense.id
     }
 
     bumpOdometer(vehicleId, odometerNum)
@@ -90,57 +80,25 @@ export function useFuelLogs() {
       bumpOdometer(log.vehicleId, log.odometer)
     }
     if (patch.liters !== undefined) log.liters = Number(patch.liters)
+    if (patch.cost !== undefined) log.cost = Number(patch.cost) || 0
     if (patch.fullTank !== undefined) log.fullTank = !!patch.fullTank
     if (patch.stationName !== undefined) log.stationName = patch.stationName
     if (patch.notes !== undefined) log.notes = patch.notes
-
-    if (patch.cost !== undefined) {
-      const amount = Number(patch.cost) || 0
-      log.cost = amount
-      if (log.linkedExpenseId && findExpense(log.linkedExpenseId)) {
-        if (amount > 0) {
-          updateExpense(log.linkedExpenseId, { amount, date: log.date })
-        } else {
-          deleteExpense(log.linkedExpenseId)
-          log.linkedExpenseId = null
-        }
-      } else if (amount > 0) {
-        const vehicle = findVehicle(log.vehicleId)
-        const category = ensureFuelCategory()
-        const expense = addExpense({
-          date: log.date,
-          amount,
-          categoryId: category.id,
-          note: `${vehicle?.name || 'Vehicle'} — Fuel (${log.liters} L)`,
-          source: 'manual',
-        })
-        log.linkedExpenseId = expense.id
-      }
-    } else if (patch.date !== undefined && log.linkedExpenseId) {
-      updateExpense(log.linkedExpenseId, { date: log.date })
-    }
   }
 
   function deleteFuelLog(id) {
     const idx = state.findIndex((l) => l.id === id)
     if (idx === -1) return null
     const [removed] = state.splice(idx, 1)
-    let removedExpense = null
-    if (removed.linkedExpenseId) {
-      removedExpense = deleteExpense(removed.linkedExpenseId)
-    }
-    pendingUndo = { log: removed, expense: removedExpense }
+    pendingUndo = removed
     return removed
   }
 
   function undoDelete() {
-    if (!pendingUndo) return
-    if (pendingUndo.expense) {
-      const { expenses } = useExpenses()
-      expenses.push(pendingUndo.expense)
+    if (pendingUndo) {
+      state.push(pendingUndo)
+      pendingUndo = null
     }
-    state.push(pendingUndo.log)
-    pendingUndo = null
   }
 
   function mileageStats(vehicleId) {
@@ -165,6 +123,12 @@ export function useFuelLogs() {
     return logsForVehicle(vehicleId).reduce((sum, l) => sum + (l.cost || 0), 0)
   }
 
+  function costInRange(vehicleId, start, end) {
+    return logsForVehicle(vehicleId)
+      .filter((l) => new Date(l.date) >= start && new Date(l.date) <= end)
+      .reduce((sum, l) => sum + (l.cost || 0), 0)
+  }
+
   function groupedByMonth(list) {
     const groups = {}
     for (const l of list) {
@@ -181,6 +145,26 @@ export function useFuelLogs() {
       }))
   }
 
+  // Last N calendar months of fuel cost for one vehicle, oldest first — for a monthly trend chart.
+  function monthlyCostForVehicle(vehicleId, monthsBack = 6) {
+    const now = new Date()
+    const months = []
+    for (let i = monthsBack - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      months.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, date: d })
+    }
+    const logs = logsForVehicle(vehicleId)
+    return months.map(({ key, date }) => {
+      const total = logs
+        .filter((l) => {
+          const d = new Date(l.date)
+          return d.getFullYear() === date.getFullYear() && d.getMonth() === date.getMonth()
+        })
+        .reduce((sum, l) => sum + (l.cost || 0), 0)
+      return { month: key, total }
+    })
+  }
+
   return {
     fuelLogs: state,
     findById,
@@ -191,6 +175,8 @@ export function useFuelLogs() {
     undoDelete,
     mileageStats,
     totalCostForVehicle,
+    costInRange,
     groupedByMonth,
+    monthlyCostForVehicle,
   }
 }

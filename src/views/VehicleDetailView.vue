@@ -1,9 +1,10 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, Bike, Car, Plus, Gauge, Droplet, Wrench, Cog, HelpCircle, Fuel } from '@lucide/vue'
+import { ArrowLeft, Bike, Car, Plus, Gauge, Fuel } from '@lucide/vue'
 import { useVehicles } from '../composables/useVehicles.js'
-import { useVehicleMaintenance, LOG_TYPE_LABELS } from '../composables/useVehicleMaintenance.js'
+import { useVehicleMaintenance } from '../composables/useVehicleMaintenance.js'
+import { useVehicleTags } from '../composables/useVehicleTags.js'
 import { useFuelLogs } from '../composables/useFuelLogs.js'
 import { useSettings } from '../composables/useSettings.js'
 import { useBudget } from '../composables/useBudget.js'
@@ -25,6 +26,7 @@ const router = useRouter()
 const { settings } = useSettings()
 const { findById, updateVehicle } = useVehicles()
 const { logsForVehicle, addLog, updateLog, deleteLog, undoDelete, totalCostForVehicle, groupedByMonth, dueSoon } = useVehicleMaintenance()
+const { findById: findTag } = useVehicleTags()
 const {
   logsForVehicle: fuelLogsForVehicle,
   addFuelLog,
@@ -59,7 +61,7 @@ const cycleCost = computed(
 
 const totalCost = computed(() => totalCostForVehicle(route.params.id) + totalFuelCostForVehicle(route.params.id))
 
-const lastServiceLog = computed(() => logs.value.find((l) => l.type === 'oil_change' || l.type === 'service') || null)
+const lastServiceLog = computed(() => logs.value.find((l) => l.tagId) || null)
 
 const nextDue = computed(() => dueSoon().find((l) => l.vehicleId === route.params.id) || null)
 
@@ -73,7 +75,9 @@ const odometerTrendPoints = computed(() => {
     .map((p) => ({ date: p.date, total: p.odometer }))
 })
 
-const typeIcon = { odometer: Gauge, oil_change: Droplet, part: Wrench, service: Cog, other: HelpCircle }
+function tagFor(log) {
+  return log.tagId ? findTag(log.tagId) : null
+}
 
 const vehicleModalOpen = ref(false)
 const logModalOpen = ref(false)
@@ -233,10 +237,11 @@ function handleDeleteFuelLog(id) {
           <Card v-for="log in group.items" :key="log.id">
             <CardContent class="flex flex-wrap items-center justify-between gap-3 p-3">
               <div class="flex items-center gap-3">
-                <component :is="typeIcon[log.type]" class="h-4 w-4 text-muted-foreground" />
+                <span v-if="tagFor(log)" class="text-base leading-none">{{ tagFor(log).icon }}</span>
+                <Gauge v-else class="h-4 w-4 text-muted-foreground" />
                 <div>
                   <div class="flex items-center gap-2">
-                    <strong>{{ LOG_TYPE_LABELS[log.type] }}</strong>
+                    <strong>{{ tagFor(log) ? tagFor(log).name : 'Odometer reading' }}</strong>
                     <Badge v-if="log.title" variant="secondary">{{ log.title }}</Badge>
                   </div>
                   <div class="text-xs text-muted-foreground">

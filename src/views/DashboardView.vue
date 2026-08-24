@@ -6,9 +6,10 @@ import { useBudget } from '../composables/useBudget.js'
 import { useSettings } from '../composables/useSettings.js'
 import { useRecurring } from '../composables/useRecurring.js'
 import { useExpenses } from '../composables/useExpenses.js'
-import { useCategories } from '../composables/useCategories.js'
 import { useVehicles } from '../composables/useVehicles.js'
-import { useVehicleMaintenance, LOG_TYPE_LABELS } from '../composables/useVehicleMaintenance.js'
+import { useVehicleMaintenance } from '../composables/useVehicleMaintenance.js'
+import { useVehicleTags } from '../composables/useVehicleTags.js'
+import { useFuelLogs } from '../composables/useFuelLogs.js'
 import { useBills, useConnections } from '../composables/useBills.js'
 import { useMeterReadings } from '../composables/useMeterReadings.js'
 import { useAssets } from '../composables/useAssets.js'
@@ -31,9 +32,10 @@ const { settings } = useSettings()
 const budget = useBudget()
 const { getPending, sortedByDueDate, stampConfirmed } = useRecurring()
 const { addExpense, expenses, groupedByDay, groupedByWeek, groupedByMonth } = useExpenses()
-const { categories } = useCategories()
 const { vehicles } = useVehicles()
-const { dueSoon } = useVehicleMaintenance()
+const { logs: maintenanceLogs, dueSoon } = useVehicleMaintenance()
+const { findById: findTag } = useVehicleTags()
+const { fuelLogs, monthlyCostForVehicle } = useFuelLogs()
 const { bills, outstandingAmount, unpaidCount, overdueCount } = useBills()
 const { meteredConnections } = useConnections()
 const { readingsForConnection, unitsSinceLast } = useMeterReadings()
@@ -93,11 +95,13 @@ const hasAnyData = computed(
     funds.length > 0
 )
 
-const vehicleCategoryIds = computed(() =>
-  categories.filter((c) => ['vehicle maintenance', 'fuel'].includes(c.name.toLowerCase())).map((c) => c.id)
-)
-const vehicleCycleCost = computed(() =>
-  budget.cycleExpenses.value.filter((e) => vehicleCategoryIds.value.includes(e.categoryId)).reduce((sum, e) => sum + e.amount, 0)
+function inCycle(date) {
+  return budget.cycle.value && new Date(date) >= budget.cycle.value.start && new Date(date) <= budget.cycle.value.end
+}
+const vehicleCycleCost = computed(
+  () =>
+    maintenanceLogs.filter((l) => inCycle(l.date)).reduce((sum, l) => sum + (l.cost || 0), 0) +
+    fuelLogs.filter((l) => inCycle(l.date)).reduce((sum, l) => sum + (l.cost || 0), 0)
 )
 const upcomingMaintenance = computed(() => dueSoon().slice(0, 3))
 
@@ -152,7 +156,7 @@ function handleSnooze() {
       <div class="flex flex-col gap-2">
         <Card v-for="log in upcomingMaintenance" :key="log.id" class="cursor-pointer" @click="router.push('/vehicles/' + log.vehicleId)">
           <CardContent class="flex items-center justify-between p-3">
-            <span class="text-sm">{{ LOG_TYPE_LABELS[log.type] }}<span v-if="log.title"> — {{ log.title }}</span></span>
+            <span class="text-sm">{{ findTag(log.tagId)?.name || 'Odometer reading' }}<span v-if="log.title"> — {{ log.title }}</span></span>
             <span class="text-xs text-muted-foreground">
               <span v-if="log.nextDueDate">by {{ formatDate(log.nextDueDate, 'short') }}</span>
               <span v-if="log.nextDueOdometer"> · at {{ log.nextDueOdometer.toLocaleString() }} km</span>
@@ -255,6 +259,18 @@ function handleSnooze() {
         <StatCard :icon="Wallet" label="Vehicles tracked" :value="String(vehicles.length)" />
         <StatCard label="Vehicle spend this cycle" :value="formatCurrency(vehicleCycleCost, settings.currencySymbol)" />
         <StatCard :icon="Wrench" label="Maintenance due soon" :value="String(dueSoon().length)" :status="dueSoon().length ? 'warn' : ''" />
+      </section>
+
+      <section v-if="vehicles.length" class="flex flex-col gap-3">
+        <h3 class="text-base font-semibold">Fuel spend by month</h3>
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Card v-for="vehicle in vehicles" :key="vehicle.id">
+            <CardContent class="p-4">
+              <h4 class="mb-3 text-sm font-semibold">{{ vehicle.name }}</h4>
+              <TrendChart :points="monthlyCostForVehicle(vehicle.id, 6).map((m) => ({ date: m.month + '-01', total: m.total }))" />
+            </CardContent>
+          </Card>
+        </div>
       </section>
 
       <section v-if="hasMoneyOverviewData" class="grid grid-cols-2 gap-3 sm:grid-cols-4">
