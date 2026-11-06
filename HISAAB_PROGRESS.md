@@ -168,7 +168,7 @@ Status assumptions: the "[EDIT: ...]" line of the brief was blank AGAIN, so: not
 
 ## E. Current work
 
-Session 6 Part A is done (D6). Part B, the Phase 2 DESIGN, is written in section K and is waiting for the owner's answers; **no account code exists and no stored data was touched.** Nothing is committed (Phases 0-1.3 and Session 6 are all working-tree changes on top of `8d26ff4`).
+Session 6 Part A is done (D6). Part B, the Phase 2 DESIGN, is written in section K and is waiting for the owner's answers; **no account code exists and no stored data was touched.** Everything up to Session 6 is now committed (Session 7: `935a802` Phase 0, `b330c6a` Phases 1.1-1.3 + Session 6; nothing pushed).
 
 ## F. Pending work (priority order)
 
@@ -310,10 +310,24 @@ Additive only; no change to stored expense shape in the first pass.
 - **Uncommitted:** everything since `8d26ff4` (46 changed/untracked paths). I committed nothing.
 - **Exact next steps:** owner commits, takes a real backup, runs the checklists, answers section K.10; then Phase 2.0.
 
+### Session 7 — 2026-11-06 (commits only; no code or behaviour changed)
+- **Task:** make a rollback point and stop. No new work, no Phase 2 code.
+- **Before:** `HEAD` was `8d26ff4` on `main`, nothing staged; 28 modified and 18 untracked files (including the owner's own `future.md`).
+- **Gate before committing:** `npm test` 145 tests (144 pass, 1 skipped, 0 fail); `npm run test:tz` all four zones (133 each; New York skips 5 old-format tests); `npm run build` OK.
+- **Commits made (NOT pushed):**
+  - `935a802` **Phase 0: full versioned backup/restore, safety snapshots, storage hardening.** 8 files: `src/utils/backup.js`, `snapshots.js`, `storage.js`, `attachments.js`, `src/views/SettingsView.vue`, `scripts/backup.test.mjs`, `scripts/fake-indexeddb.mjs`, `package.json`. Message states that Phase 0 is not yet browser-verified.
+  - `b330c6a` **Phases 1.1-1.3 and Session 6: reporting, Expenses redesign, refund-aware budget.** 39 files (reporting/budget/CSV modules, Expenses/Dashboard/Budget/Income/Bills changes, all other tests and test tooling, this file). Message states it is not verified on a real phone or with real data.
+  - the commit that adds this entry (documentation only).
+- **How the split was made (the phases overlap in two files, no interactive staging was available):** `package.json` and `src/views/SettingsView.vue` mix Phase 0 and later changes. For commit 1 only, I temporarily wrote Phase-0-only versions (`package.json` without the `test:tz` script; `SettingsView.vue` with the ORIGINAL CSV export instead of the shared exporter and without its three imports and one line), committed them, then restored the full versions byte-for-byte (SHA-256 checksums matched) and committed those in commit 2. So the Phase 0 commit contains the original "Export CSV" code and commit 2 switches it to the shared exporter.
+- **Verified:** commit 1 in a throw-away worktree on its own: 12 tests pass and the production build succeeds. The final committed tree: 145 tests (144 pass, 1 skipped) and a successful build. `node_modules` was shared through a junction that was removed before the worktree, and was intact afterwards (261 top-level folders before and after).
+- **Left alone:** `future.md` stays untracked and uncommitted (the owner's own file). No source file was changed for Session 7, only this entry and the two corrected sentences above.
+- **Repository state after:** branch `main`, three commits ahead of `8d26ff4` once this entry is committed, only `future.md` untracked.
+- **Only the owner can do next:** take a real backup export (Settings -> Export full backup, with attachments) and keep the file safe; run the Phase 0 backup/restore checklist and the Expenses/Dashboard/Budget/Income/Bills click-throughs on real data, in light theme and on a phone; answer the 14 numbered questions in section K.10 (each has a recommended answer). No Phase 2 code until then.
+
 ## J. Next recommended action
 
 **Stop building. Do these three things, in this order:**
-1. **Commit.** Suggested two commits: (a) Phase 0 (backup/restore, snapshots, storage hardening, Settings backup UI, their tests); (b) everything else (reporting, Expenses page, budget math, Dashboard/Budget/Income/Bills changes, tests, docs). Phases overlap in shared files, so a finer split needs `git add -p`. Ask me and I will do it.
+1. **Commit. DONE in Session 7** (`935a802`, `b330c6a`; nothing pushed). The suggestion was two commits: (a) Phase 0 (backup/restore, snapshots, storage hardening, Settings backup UI, their tests); (b) everything else (reporting, Expenses page, budget math, Dashboard/Budget/Income/Bills changes, tests, docs). Phases overlap in shared files, so a finer split needs `git add -p`. Ask me and I will do it.
 2. **Take a real backup first** (Settings -> Export full backup, with attachments), keep that file somewhere safe, THEN run the Phase 0 restore checklist (section F of the previous sessions, repeated here): export with and without attachments; import the exported file back; import an old-style file; try an invalid file; check the Safety snapshots list and Download; check Reset all data leaves no snapshot. Then click through Expenses, Dashboard, Budget, Income and Bills on your real data, in light theme and on your phone. New in Session 6 to try: delete a bill that has an attachment (read the confirmation, press Undo, open the attachment again); the Income page; "Day N of M" on the Dashboard.
 3. **Answer the numbered questions at the end of section K** (design for accounts). I will not write any account code until you have.
 
