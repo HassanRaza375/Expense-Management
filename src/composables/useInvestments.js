@@ -48,15 +48,23 @@ export function useInvestments() {
     return invested > 0 ? (profitLoss(fund) / invested) * 100 : 0
   }
 
+  // Orders two dated records chronologically. Dates are stored as date-only values, so
+  // same-day records fall back to the order they were entered (createdAt).
+  function compareChronological(a, b) {
+    return new Date(a.date) - new Date(b.date) || new Date(a.createdAt) - new Date(b.createdAt)
+  }
+
   // Change vs the previous value entry, with any contributions made in between backed out
-  // so a top-up isn't counted as "profit."
+  // so a top-up isn't counted as "profit." A contribution counts as "in between" when it
+  // sits after the previous entry and at-or-before the latest one, so a same-day contribution
+  // logged before the new value update is correctly excluded from the gain.
   function changeSinceLast(fund) {
     const entries = sortedValueEntries(fund) // newest first
     if (entries.length < 2) return null
     const [latest, previous] = entries
     const rawDelta = latest.value - previous.value
     const contributedBetween = fund.contributions
-      .filter((c) => new Date(c.date) > new Date(previous.date) && new Date(c.date) <= new Date(latest.date))
+      .filter((c) => compareChronological(c, previous) > 0 && compareChronological(c, latest) <= 0)
       .reduce((sum, c) => sum + c.amount, 0)
     return rawDelta - contributedBetween
   }
