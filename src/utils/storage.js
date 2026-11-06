@@ -10,16 +10,33 @@ export function get(key, fallback) {
   try {
     return JSON.parse(raw)
   } catch {
-    console.warn(`hisaab:storage — corrupt data for "${key}", resetting to default`)
+    // The caller's state will later overwrite this key with the fallback. Keep the unreadable
+    // original under a separate key (once) so it can still be recovered by hand.
+    preserveCorrupt(key, raw)
+    console.warn(`hisaab:storage — corrupt data for "${key}", using default (original kept under "${CORRUPT_PREFIX}${key}")`)
     return fallback
   }
 }
 
+const CORRUPT_PREFIX = `${PREFIX}corrupt:`
+
+function preserveCorrupt(key, raw) {
+  try {
+    const backupKey = `${CORRUPT_PREFIX}${key.startsWith(PREFIX) ? key.slice(PREFIX.length) : key}`
+    if (localStorage.getItem(backupKey) === null) localStorage.setItem(backupKey, raw)
+  } catch {
+    // storage full or unavailable — nothing more we can do
+  }
+}
+
+// Returns true when the value was written, false when the write failed (e.g. quota exceeded).
 export function set(key, value) {
   try {
     localStorage.setItem(fullKey(key), JSON.stringify(value))
+    return true
   } catch (err) {
     console.error(`hisaab:storage — failed to write "${key}"`, err)
+    return false
   }
 }
 

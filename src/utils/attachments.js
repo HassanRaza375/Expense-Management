@@ -41,6 +41,16 @@ export async function getAttachment(id) {
   })
 }
 
+export async function getAllAttachments() {
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly')
+    const req = tx.objectStore(STORE_NAME).getAll()
+    req.onsuccess = () => resolve(req.result || [])
+    req.onerror = () => reject(req.error)
+  })
+}
+
 export async function deleteAttachment(id) {
   const db = await openDB()
   return new Promise((resolve, reject) => {

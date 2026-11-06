@@ -1,12 +1,15 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Download, Upload, ChevronRight, MonitorDown } from '@lucide/vue'
+import { Download, Upload, ChevronRight, MonitorDown, TriangleAlert } from '@lucide/vue'
 import { useSettings } from '../composables/useSettings.js'
 import { useAppLock } from '../composables/useAppLock.js'
 import { useInstallPrompt } from '../composables/useInstallPrompt.js'
-import { get, set, usageBytes, STORAGE_KEYS } from '../utils/storage.js'
+import { usageBytes } from '../utils/storage.js'
+import { buildBackup, parseBackup, summarizeBackup, applyBackup } from '../utils/backup.js'
+import { saveSnapshot, listSnapshots, clearSnapshots } from '../utils/snapshots.js'
 import { useExpenses } from '../composables/useExpenses.js'
+import { Checkbox } from '@/components/ui/checkbox/index.js'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card/index.js'
 import { Button } from '@/components/ui/button/index.js'
 import { Input } from '@/components/ui/input/index.js'
@@ -39,36 +42,22 @@ async function submitPasswordChange() {
   }
 }
 
-// --- Main backup ---
-function exportMain() {
-  const bundle = {
-    kind: 'hisaab-main-backup',
-    exportedAt: new Date().toISOString(),
-    settings: get(STORAGE_KEYS.SETTINGS, {}),
-    categories: get(STORAGE_KEYS.CATEGORIES, []),
-    expenses: get(STORAGE_KEYS.EXPENSES, []),
-    recurring: get(STORAGE_KEYS.RECURRING, []),
-    bills: get(STORAGE_KEYS.BILLS, { connections: [], bills: [] }),
-    income: get(STORAGE_KEYS.INCOME, []),
-    vehicles: get(STORAGE_KEYS.VEHICLES, []),
-    vehicleLogs: get(STORAGE_KEYS.VEHICLE_LOGS, []),
-    fuelLogs: get(STORAGE_KEYS.FUEL_LOGS, []),
-    vehicleTags: get(STORAGE_KEYS.VEHICLE_TAGS, []),
-    lending: get(STORAGE_KEYS.LENDING, []),
-    meterReadings: get(STORAGE_KEYS.METER_READINGS, []),
-    investments: get(STORAGE_KEYS.INVESTMENTS, []),
-  }
-  downloadJSON(bundle, `hisaab-backup-${new Date().toISOString().slice(0, 10)}.json`)
-}
+// --- Full backup (everything in one versioned file) ---
+const includeAttachments = ref(true)
+const exporting = ref(false)
 
-function exportVaultAssets() {
-  const bundle = {
-    kind: 'hisaab-vault-assets-backup',
-    exportedAt: new Date().toISOString(),
-    vault: get(STORAGE_KEYS.VAULT, null), // still encrypted
-    assets: get(STORAGE_KEYS.ASSETS, []),
+async function exportFull() {
+  exporting.value = true
+  try {
+    const bundle = await buildBackup({ includeAttachments: includeAttachments.value })
+    downloadJSON(bundle, `hisaab-backup-${new Date().toISOString().slice(0, 10)}.json`)
+    const files = bundle.attachments?.length
+    toast.success(files ? `Backup downloaded (including ${files} attachment${files === 1 ? '' : 's'})` : 'Backup downloaded')
+  } catch (err) {
+    toast.error('Export failed: ' + (err?.message || 'unknown error'))
+  } finally {
+    exporting.value = false
   }
-  downloadJSON(bundle, `hisaab-vault-assets-${new Date().toISOString().slice(0, 10)}.json`)
 }
 
 function exportCSV() {
@@ -94,74 +83,78 @@ function triggerDownload(blob, filename) {
   URL.revokeObjectURL(url)
 }
 
-const importPreview = ref(null)
-const importKind = ref('')
+// --- Import (parse + validate first, nothing is written until the user confirms) ---
+const importState = ref(null) // { fileName, result, rows }
+const importing = ref(false)
 
-function handleFileSelect(e, kind) {
+function handleFileSelect(e) {
   const file = e.target.files[0]
+  e.target.value = ''
   if (!file) return
   const reader = new FileReader()
   reader.onload = () => {
-    try {
-      const parsed = JSON.parse(reader.result)
-      importKind.value = kind
-      importPreview.value = parsed
-    } catch {
-      toast.error('Invalid JSON file')
-    }
+    const result = parseBackup(String(reader.result))
+    importState.value = { fileName: file.name, result, rows: result.ok ? summarizeBackup(result.backup) : [] }
   }
+  reader.onerror = () => toast.error('Could not read that file')
   reader.readAsText(file)
-  e.target.value = ''
 }
 
-function confirmImport() {
-  const data = importPreview.value
-  if (importKind.value === 'main') {
-    if (data.settings) set(STORAGE_KEYS.SETTINGS, data.settings)
-    if (data.categories) set(STORAGE_KEYS.CATEGORIES, data.categories)
-    if (data.expenses) set(STORAGE_KEYS.EXPENSES, data.expenses)
-    if (data.recurring) set(STORAGE_KEYS.RECURRING, data.recurring)
-    if (data.bills) set(STORAGE_KEYS.BILLS, data.bills)
-    if (data.income) set(STORAGE_KEYS.INCOME, data.income)
-    if (data.vehicles) set(STORAGE_KEYS.VEHICLES, data.vehicles)
-    if (data.vehicleLogs) set(STORAGE_KEYS.VEHICLE_LOGS, data.vehicleLogs)
-    if (data.fuelLogs) set(STORAGE_KEYS.FUEL_LOGS, data.fuelLogs)
-    if (data.vehicleTags) set(STORAGE_KEYS.VEHICLE_TAGS, data.vehicleTags)
-    if (data.lending) set(STORAGE_KEYS.LENDING, data.lending)
-    if (data.meterReadings) set(STORAGE_KEYS.METER_READINGS, data.meterReadings)
-    if (data.investments) set(STORAGE_KEYS.INVESTMENTS, data.investments)
-  } else if (importKind.value === 'vault') {
-    if (data.vault) set(STORAGE_KEYS.VAULT, data.vault)
-    if (data.assets) set(STORAGE_KEYS.ASSETS, data.assets)
+async function confirmImport() {
+  const state = importState.value
+  if (!state?.result.ok || importing.value) return
+  importing.value = true
+  try {
+    // Safety net first. If the snapshot store is unavailable, fall back to downloading a copy.
+    const snapshot = await saveSnapshot('before-import').catch(() => null)
+    if (!snapshot) {
+      const current = await buildBackup({ includeAttachments: false })
+      downloadJSON(current, `hisaab-before-import-${new Date().toISOString().slice(0, 10)}.json`)
+      toast('Automatic snapshot unavailable, so a copy of your current data was downloaded instead')
+    }
+    const report = await applyBackup(state.result.backup)
+    const extra = report.restoredAttachments ? `, ${report.restoredAttachments} attachment${report.restoredAttachments === 1 ? '' : 's'}` : ''
+    toast.success(`Restored ${report.replaced.length} sections${extra}`)
+    if (report.failedAttachments) toast.error(`${report.failedAttachments} attachment(s) could not be restored`)
+    setTimeout(() => location.reload(), 700)
+  } catch (err) {
+    importing.value = false
+    toast.error('Import failed. Your data was not changed. ' + (err?.message || ''))
   }
-  importPreview.value = null
-  location.reload()
 }
 
 function cancelImport() {
-  importPreview.value = null
+  if (importing.value) return
+  importState.value = null
 }
 
-const importSummary = computed(() => {
-  const d = importPreview.value
-  if (!d) return []
-  if (importKind.value === 'main') {
-    return [
-      `Categories: ${d.categories?.length ?? 0}`,
-      `Expenses: ${d.expenses?.length ?? 0}`,
-      `Recurring: ${d.recurring?.length ?? 0}`,
-      `Bills: ${d.bills?.bills?.length ?? 0} (connections: ${d.bills?.connections?.length ?? 0})`,
-      `Settings: ${d.settings ? 'included' : 'missing'}`,
-    ]
+// --- Safety snapshots ---
+const snapshots = ref([])
+
+async function refreshSnapshots() {
+  try {
+    snapshots.value = await listSnapshots()
+  } catch {
+    snapshots.value = []
   }
-  return [`Vault: ${d.vault ? 'included (encrypted)' : 'missing'}`, `Assets: ${d.assets?.length ?? 0}`]
-})
+}
+
+function downloadSnapshot(s) {
+  downloadJSON(s.backup, `hisaab-snapshot-${s.createdAt.slice(0, 19).replace(/[:T]/g, '-')}.json`)
+}
+
+function formatWhen(iso) {
+  return new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+onMounted(refreshSnapshots)
 
 // --- Danger zone ---
 const confirmPhrase = ref('')
 const REQUIRED_PHRASE = 'DELETE MY DATA'
-function resetAllData() {
+async function resetAllData() {
   if (confirmPhrase.value !== REQUIRED_PHRASE) return
+  await clearSnapshots() // a reset must not leave a readable copy of the data behind
   localStorage.clear()
   location.reload()
 }
@@ -223,30 +216,38 @@ const usageKB = computed(() => (usageBytes() / 1024).toFixed(1))
 
     <Card>
       <CardHeader>
-        <CardTitle class="text-base">Backup — main data</CardTitle>
-        <CardDescription>Settings, Categories, Expenses, Recurring, Budget, Bills. (Bill attachments live in IndexedDB and aren't included — device-local only.)</CardDescription>
+        <CardTitle class="text-base">Backup &amp; restore</CardTitle>
+        <CardDescription>
+          One file with all your data: expenses, income, budgets, bills, assets, lending, investments, vehicles and the (still encrypted) vault.
+          The app-lock password is not included, so after restoring on a new device you set a new one. Your data only lives in this browser, so keep a backup somewhere safe.
+        </CardDescription>
       </CardHeader>
-      <CardContent class="flex flex-wrap gap-2">
-        <Button variant="outline" @click="exportMain"><Download class="h-4 w-4" /> Export JSON</Button>
-        <Button variant="outline" @click="exportCSV"><Download class="h-4 w-4" /> Export CSV (expenses)</Button>
-        <Button variant="outline" as="label" class="cursor-pointer">
-          <Upload class="h-4 w-4" /> Import JSON
-          <input type="file" accept="application/json" hidden @change="handleFileSelect($event, 'main')" />
-        </Button>
+      <CardContent class="flex flex-col gap-3">
+        <label class="flex cursor-pointer items-center gap-2 text-sm">
+          <Checkbox v-model="includeAttachments" />
+          Include bill attachments (photos/PDFs). Makes the file larger.
+        </label>
+        <div class="flex flex-wrap gap-2">
+          <Button :disabled="exporting" @click="exportFull"><Download class="h-4 w-4" /> {{ exporting ? 'Preparing…' : 'Export full backup' }}</Button>
+          <Button variant="outline" as="label" class="cursor-pointer">
+            <Upload class="h-4 w-4" /> Import backup
+            <input type="file" accept="application/json,.json" hidden @change="handleFileSelect" />
+          </Button>
+          <Button variant="outline" @click="exportCSV"><Download class="h-4 w-4" /> Export expenses (CSV)</Button>
+        </div>
       </CardContent>
     </Card>
 
-    <Card>
+    <Card v-if="snapshots.length">
       <CardHeader>
-        <CardTitle class="text-base">Backup — Vault &amp; Assets</CardTitle>
-        <CardDescription>Separate file. Vault portion stays encrypted, safe to store without the passphrase.</CardDescription>
+        <CardTitle class="text-base">Safety snapshots</CardTitle>
+        <CardDescription>Saved automatically before an import replaces your data. The latest {{ snapshots.length }} are kept on this device. Download one and use "Import backup" to go back.</CardDescription>
       </CardHeader>
-      <CardContent class="flex flex-wrap gap-2">
-        <Button variant="outline" @click="exportVaultAssets"><Download class="h-4 w-4" /> Export JSON</Button>
-        <Button variant="outline" as="label" class="cursor-pointer">
-          <Upload class="h-4 w-4" /> Import JSON
-          <input type="file" accept="application/json" hidden @change="handleFileSelect($event, 'vault')" />
-        </Button>
+      <CardContent class="flex flex-col gap-2">
+        <div v-for="s in snapshots" :key="s.id" class="flex items-center justify-between gap-2 text-sm">
+          <span>{{ formatWhen(s.createdAt) }} <span class="text-muted-foreground">· {{ s.counts?.expenses ?? 0 }} expenses</span></span>
+          <Button variant="ghost" size="sm" @click="downloadSnapshot(s)"><Download class="h-4 w-4" /> Download</Button>
+        </div>
       </CardContent>
     </Card>
 
@@ -268,16 +269,51 @@ const usageKB = computed(() => (usageBytes() / 1024).toFixed(1))
       </CardContent>
     </Card>
 
-    <Dialog :open="!!importPreview" @update:open="(v) => !v && cancelImport()">
-      <DialogContent class="max-w-sm">
-        <DialogHeader><DialogTitle>Confirm import</DialogTitle></DialogHeader>
-        <ul class="m-0 list-disc pl-5 text-sm">
-          <li v-for="line in importSummary" :key="line">{{ line }}</li>
-        </ul>
-        <p class="m-0 text-sm text-muted-foreground">This will overwrite existing data for these keys.</p>
+    <Dialog :open="!!importState" @update:open="(v) => !v && cancelImport()">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{{ importState?.result.ok ? 'Replace your data with this backup?' : "This file can't be imported" }}</DialogTitle>
+        </DialogHeader>
+
+        <template v-if="importState">
+          <p class="m-0 break-all text-xs text-muted-foreground">{{ importState.fileName }}</p>
+
+          <ul v-if="importState.result.errors.length" class="m-0 flex list-disc flex-col gap-1 pl-5 text-sm text-destructive">
+            <li v-for="msg in importState.result.errors" :key="msg">{{ msg }}</li>
+          </ul>
+
+          <template v-if="importState.result.ok">
+            <p v-if="importState.result.backup.exportedAt" class="m-0 text-sm text-muted-foreground">
+              Backup taken {{ formatWhen(importState.result.backup.exportedAt) }}
+            </p>
+            <div class="overflow-hidden rounded-md border border-border text-sm">
+              <div class="grid grid-cols-[1fr_auto_auto] gap-x-4 border-b border-border bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                <span>Section</span><span>In backup</span><span>On this device</span>
+              </div>
+              <div v-for="row in importState.rows" :key="row.key" class="grid grid-cols-[1fr_auto_auto] gap-x-4 border-b border-border px-3 py-1.5 last:border-b-0">
+                <span>{{ row.label }}</span>
+                <span class="amount text-right">{{ row.incoming }}</span>
+                <span class="amount text-right text-muted-foreground">{{ row.current }}</span>
+              </div>
+            </div>
+            <p v-if="importState.result.backup.attachments.length" class="m-0 text-sm">
+              {{ importState.result.backup.attachments.length }} attachment(s) will be added.
+            </p>
+            <ul v-if="importState.result.warnings.length" class="m-0 flex list-disc flex-col gap-1 pl-5 text-xs text-status-warn">
+              <li v-for="msg in importState.result.warnings" :key="msg">{{ msg }}</li>
+            </ul>
+            <p class="m-0 flex gap-2 text-sm">
+              <TriangleAlert class="mt-0.5 h-4 w-4 shrink-0 text-status-warn" />
+              <span>The sections above are <strong>replaced</strong> by the backup's version. Sections not listed stay as they are. A safety snapshot of your current data is saved first.</span>
+            </p>
+          </template>
+        </template>
+
         <DialogFooter>
-          <Button variant="ghost" @click="cancelImport">Cancel</Button>
-          <Button @click="confirmImport">Import</Button>
+          <Button variant="ghost" :disabled="importing" @click="cancelImport">{{ importState?.result.ok ? 'Cancel' : 'Close' }}</Button>
+          <Button v-if="importState?.result.ok" variant="destructive" :disabled="importing" @click="confirmImport">
+            {{ importing ? 'Restoring…' : 'Replace my data' }}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
