@@ -30,7 +30,7 @@ export function useIncome() {
     return state.find((i) => i.id === id)
   }
 
-  function addIncome({ date, amount, sourceType, note }) {
+  function addIncome({ date, amount, sourceType, note, accountId }) {
     const amt = Number(amount)
     if (!(amt > 0)) throw new Error('Amount must be greater than 0')
     const income = {
@@ -41,6 +41,7 @@ export function useIncome() {
       note: note || '',
       createdAt: new Date().toISOString(),
     }
+    if (accountId) income.accountId = accountId // optional; absent = Unassigned
     state.push(income)
     return income
   }
@@ -52,6 +53,10 @@ export function useIncome() {
       const amt = Number(patch.amount)
       if (!(amt > 0)) throw new Error('Amount must be greater than 0')
       income.amount = amt
+    }
+    if (patch.accountId !== undefined) {
+      if (patch.accountId) income.accountId = patch.accountId
+      else delete income.accountId
     }
     if (patch.date !== undefined) income.date = patch.date
     if (patch.sourceType !== undefined) income.sourceType = INCOME_SOURCES.includes(patch.sourceType) ? patch.sourceType : 'other'

@@ -21,7 +21,7 @@ export function useExpenses() {
 
   // `kind` is optional. Only 'refund' is ever stored (amount stays POSITIVE); an ordinary expense has
   // no `kind` field at all, so existing records and new ordinary expenses have exactly the same shape.
-  function addExpense({ date, amount, categoryId, note, source = 'manual', recurringId = null, billId = null, kind }) {
+  function addExpense({ date, amount, categoryId, note, source = 'manual', recurringId = null, billId = null, kind, accountId }) {
     const amt = Number(amount)
     if (!(amt > 0)) throw new Error('Amount must be greater than 0')
     if (!categoryId) throw new Error('Category is required')
@@ -38,6 +38,7 @@ export function useExpenses() {
       createdAt: new Date().toISOString(),
     }
     if (kind === 'refund') expense.kind = 'refund'
+    if (accountId) expense.accountId = accountId // optional; absent = Unassigned
     state.push(expense)
     return expense
   }
@@ -54,6 +55,10 @@ export function useExpenses() {
       if (patch.kind !== 'expense' && patch.kind !== 'refund') throw new Error('Kind must be "expense" or "refund"')
       if (patch.kind === 'refund') exp.kind = 'refund'
       else delete exp.kind
+    }
+    if (patch.accountId !== undefined) {
+      if (patch.accountId) exp.accountId = patch.accountId
+      else delete exp.accountId
     }
     if (patch.date !== undefined) exp.date = patch.date
     if (patch.categoryId !== undefined) exp.categoryId = patch.categoryId

@@ -14,7 +14,7 @@ const ZONES = [
 ]
 
 // every file that depends on dates: reporting, budget math (parity with the old code), and the composables
-const testFiles = ['reporting', 'budget', 'cycle-income', 'bills-budget', 'bill-delete', 'expenses'].map((n) => fileURLToPath(new URL(`./${n}.test.mjs`, import.meta.url)))
+const testFiles = ['reporting', 'budget', 'cycle-income', 'bills-budget', 'bill-delete', 'expenses', 'accounts', 'accounts-store', 'migrations'].map((n) => fileURLToPath(new URL(`./${n}.test.mjs`, import.meta.url)))
 let failed = 0
 
 for (const { tz, offset } of ZONES) {

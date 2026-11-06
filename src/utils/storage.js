@@ -87,6 +87,7 @@ export const STORAGE_KEYS = {
   LENDING: 'lending',
   METER_READINGS: 'meterReadings',
   INVESTMENTS: 'investments',
+  ACCOUNTS: 'accounts', // { accounts: [], transfers: [], adjustments: [] }  (Phase 2)
   VEHICLE_TAGS: 'vehicleTags',
   META: 'meta',
 }

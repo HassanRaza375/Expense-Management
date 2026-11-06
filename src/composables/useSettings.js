@@ -11,6 +11,8 @@ const defaults = {
   categoryBudgets: {}, // { [categoryId]: number }
   rollover: false,
   lastCategoryId: '', // category used for the previous new expense (pre-selected in the form)
+  defaultAccountId: '', // account pre-selected when nothing else is known ('' = none)  (Phase 2)
+  lastAccountId: '', // account used for the previous new record (remembered by the forms)
 }
 
 const state = reactive({ ...defaults, ...get(STORAGE_KEYS.SETTINGS, {}) })
@@ -66,6 +68,14 @@ export function useSettings() {
     state.lastCategoryId = id || ''
   }
 
+  function setDefaultAccountId(id) {
+    state.defaultAccountId = id || ''
+  }
+
+  function setLastAccountId(id) {
+    state.lastAccountId = id || ''
+  }
+
   function resetAllSettings() {
     Object.assign(state, defaults)
   }
@@ -82,6 +92,8 @@ export function useSettings() {
     removeCategoryBudget,
     setRollover,
     setLastCategoryId,
+    setDefaultAccountId,
+    setLastAccountId,
     resetAllSettings,
   }
 }

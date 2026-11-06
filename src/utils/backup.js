@@ -1,5 +1,8 @@
 import { get, set, remove, getRaw, setRaw, STORAGE_KEYS } from './storage.js'
 import { getAllAttachments, putAttachment } from './attachments.js'
+import { CURRENT_SCHEMA_VERSION } from './migrations.js'
+import { ACCOUNT_TYPES } from './accounts.js'
+import { isDayKey } from './reporting.js'
 
 // ---------------------------------------------------------------------------
 // Hisaab backup format
@@ -22,7 +25,7 @@ import { getAllAttachments, putAttachment } from './attachments.js'
 export const BACKUP_APP = 'hisaab'
 export const BACKUP_KIND = 'hisaab-full-backup'
 export const BACKUP_FORMAT_VERSION = 1
-export const CURRENT_SCHEMA_VERSION = 1
+export { CURRENT_SCHEMA_VERSION } // the data version this app writes and understands (see utils/migrations.js)
 
 const LEGACY_MAIN_KIND = 'hisaab-main-backup'
 const LEGACY_VAULT_KIND = 'hisaab-vault-assets-backup'
@@ -60,6 +63,30 @@ function checkFunds(items) {
   return issues
 }
 
+// Accounts store: { accounts[], transfers[], adjustments[] }. Problems here are WARNINGS (see above): an orphaned
+// account id just means those records are Unassigned.
+function checkAccountsStore(value) {
+  const issues = []
+  const accounts = Array.isArray(value.accounts) ? value.accounts : []
+  const ids = new Set(accounts.map((a) => a?.id))
+  if (ids.size !== accounts.length) issues.push('some accounts share an id')
+  accounts.forEach((a, i) => {
+    if (!String(a?.name ?? '').trim()) issues.push(`account ${i + 1} has no name`)
+    if (!ACCOUNT_TYPES.includes(a?.type)) issues.push(`account ${i + 1} has an unknown type`)
+    if (!Number.isFinite(Number(a?.openingBalance))) issues.push(`account ${i + 1} has a non-numeric opening balance`)
+    if (!isDayKey(a?.openingDate)) issues.push(`account ${i + 1} has an invalid opening date`)
+  })
+  ;(Array.isArray(value.transfers) ? value.transfers : []).forEach((t, i) => {
+    if (!ids.has(t?.fromAccountId) || !ids.has(t?.toAccountId)) issues.push(`transfer ${i + 1} refers to an account that is not in the file`)
+    if (!(Number(t?.amount) > 0)) issues.push(`transfer ${i + 1} has an invalid amount`)
+  })
+  ;(Array.isArray(value.adjustments) ? value.adjustments : []).forEach((a, i) => {
+    if (!ids.has(a?.accountId)) issues.push(`correction ${i + 1} refers to an account that is not in the file`)
+    if (!Number.isFinite(Number(a?.amount))) issues.push(`correction ${i + 1} has an invalid amount`)
+  })
+  return issues
+}
+
 export const BACKUP_MODULES = [
   { key: STORAGE_KEYS.SETTINGS, label: 'Settings', shape: 'object' },
   { key: STORAGE_KEYS.CATEGORIES, label: 'Categories', shape: 'array' },
@@ -70,6 +97,7 @@ export const BACKUP_MODULES = [
   { key: STORAGE_KEYS.METER_READINGS, label: 'Meter readings', shape: 'array' },
   { key: STORAGE_KEYS.ASSETS, label: 'Assets', shape: 'array' },
   { key: STORAGE_KEYS.LENDING, label: 'Lending', shape: 'array' },
+  { key: STORAGE_KEYS.ACCOUNTS, label: 'Accounts', shape: 'accounts', check: checkAccountsStore },
   { key: STORAGE_KEYS.INVESTMENTS, label: 'Investments', shape: 'array', check: checkFunds },
   { key: STORAGE_KEYS.VEHICLES, label: 'Vehicles', shape: 'array' },
   { key: STORAGE_KEYS.VEHICLE_LOGS, label: 'Maintenance logs', shape: 'array' },
@@ -84,6 +112,7 @@ function itemCount(value, mod) {
   if (value === null || value === undefined) return null
   if (mod.shape === 'array') return Array.isArray(value) ? value.length : null
   if (mod.shape === 'bills') return Array.isArray(value?.bills) ? value.bills.length : null
+  if (mod.shape === 'accounts') return Array.isArray(value?.accounts) ? value.accounts.length : null
   return null
 }
 
@@ -91,6 +120,10 @@ function describe(value, mod) {
   if (value === null || value === undefined) return 'empty'
   if (mod.key === STORAGE_KEYS.VAULT) return 'present'
   if (mod.key === STORAGE_KEYS.SETTINGS) return 'present'
+  if (mod.shape === 'accounts') {
+    const n = (list) => (Array.isArray(list) ? list.length : 0)
+    return `${n(value?.accounts)} accounts, ${n(value?.transfers)} transfers, ${n(value?.adjustments)} corrections`
+  }
   if (mod.shape === 'bills') {
     const bills = Array.isArray(value?.bills) ? value.bills.length : 0
     const connections = Array.isArray(value?.connections) ? value.connections.length : 0
@@ -271,6 +304,12 @@ export function parseBackup(text) {
 
   if (errors.length) return { ok: false, errors, warnings, backup: null }
 
+  // A full backup from before accounts existed (data version 1) describes a device WITHOUT accounts, and a full
+  // backup means "make this device match the file", so restoring it clears the accounts store.
+  if (!legacy && (Number.isInteger(raw.schemaVersion) ? raw.schemaVersion : 1) < 2 && !(STORAGE_KEYS.ACCOUNTS in data)) {
+    normalized[STORAGE_KEYS.ACCOUNTS] = null
+  }
+
   return {
     ok: true,
     errors: [],
@@ -293,6 +332,13 @@ function structuralProblem(value, mod) {
     if (value.some((item) => !isPlainObject(item))) return 'contains entries that are not records.'
     return null
   }
+  if (mod.shape === 'accounts') {
+    if (!isPlainObject(value)) return 'expected an object with accounts, transfers and corrections.'
+    for (const field of ['accounts', 'transfers', 'adjustments']) {
+      if (value[field] !== undefined && (!Array.isArray(value[field]) || value[field].some((item) => !isPlainObject(item)))) return `"${field}" must be a list of records.`
+    }
+    return null
+  }
   if (mod.shape === 'bills') {
     if (!isPlainObject(value)) return 'expected an object with bills and connections.'
     for (const field of ['bills', 'connections']) {
@@ -311,14 +357,23 @@ function structuralProblem(value, mod) {
 // Rows for the confirmation dialog: what the file carries vs what is on this device now.
 export function summarizeBackup(backup) {
   const rows = []
+  const deviceHasAccounts = ((get(STORAGE_KEYS.ACCOUNTS, null) || {}).accounts || []).length > 0
   for (const mod of BACKUP_MODULES) {
     if (!(mod.key in backup.data)) continue
-    rows.push({
+    const row = {
       key: mod.key,
       label: mod.label,
       incoming: describe(backup.data[mod.key], mod),
       current: describe(get(mod.key, null), mod),
-    })
+      note: '',
+    }
+    if (mod.key === STORAGE_KEYS.ACCOUNTS && backup.data[mod.key] === null && deviceHasAccounts) {
+      row.note = backup.schemaVersion < 2 ? 'Will be cleared: this backup was made before accounts existed.' : 'Will be cleared: this backup has no accounts.'
+    }
+    if (deviceHasAccounts && !(STORAGE_KEYS.ACCOUNTS in backup.data) && [STORAGE_KEYS.EXPENSES, STORAGE_KEYS.INCOME].includes(mod.key)) {
+      row.note = 'This device has accounts. Records in this backup without an account stay Unassigned.'
+    }
+    rows.push(row)
   }
   return rows
 }

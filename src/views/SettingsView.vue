@@ -296,6 +296,7 @@ const usageKB = computed(() => (usageBytes() / 1024).toFixed(1))
                 <span>{{ row.label }}</span>
                 <span class="amount text-right">{{ row.incoming }}</span>
                 <span class="amount text-right text-muted-foreground">{{ row.current }}</span>
+                <span v-if="row.note" class="col-span-3 text-xs text-status-warn">{{ row.note }}</span>
               </div>
             </div>
             <p v-if="importState.result.backup.attachments.length" class="m-0 text-sm">
