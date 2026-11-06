@@ -6,7 +6,8 @@ import { useAppLock } from './composables/useAppLock.js'
 import { useSettings } from './composables/useSettings.js'
 import { useRecurring } from './composables/useRecurring.js'
 import { useSidebar } from './composables/useSidebar.js'
-import { getCycle } from './utils/date.js'
+import { currentCycle } from './utils/reporting.js'
+import { toDateCycle, sanitizeResetDay } from './utils/budgetMath.js'
 import { ensureMeta } from './utils/storage.js'
 import { Toaster } from './components/ui/sonner/index.js'
 import { Button } from './components/ui/button/index.js'
@@ -26,7 +27,7 @@ watchEffect(() => {
 })
 
 const pendingRecurringCount = computed(() => {
-  const cycle = getCycle(new Date(), settings.cycleResetDay)
+  const cycle = toDateCycle(currentCycle(new Date(), sanitizeResetDay(settings.cycleResetDay)))
   return getPending(cycle).length
 })
 </script>

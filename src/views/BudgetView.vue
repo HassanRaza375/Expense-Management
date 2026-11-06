@@ -46,6 +46,9 @@ function saveCategory(id) {
             This cycle: {{ formatCurrency(budget.cycleSpent.value, settings.currencySymbol) }} of
             {{ formatCurrency(settings.overallBudget, settings.currencySymbol) }}
           </p>
+          <p v-if="budget.cycleRefunds.value > 0" class="mt-0.5 text-xs text-muted-foreground" data-testid="budget-refunds">
+            {{ formatCurrency(budget.cycleGross.value, settings.currencySymbol) }} spent − {{ formatCurrency(budget.cycleRefunds.value, settings.currencySymbol) }} refunds
+          </p>
         </div>
         <Button
           v-if="!editingOverall"
@@ -66,7 +69,7 @@ function saveCategory(id) {
         <Progress :model-value="budget.overallPercentUsed.value" :status="budget.overallStatus.value" />
 
         <div class="flex justify-between text-sm text-muted-foreground">
-          <span :class="statusTextClass[budget.overallStatus.value]">{{ budget.overallPercentUsed.value.toFixed(0) }}% used</span>
+          <span :class="statusTextClass[budget.overallStatus.value]">{{ Math.max(0, budget.overallPercentUsed.value).toFixed(0) }}% used</span>
           <span>{{ formatCurrency(budget.overallRemaining.value, settings.currencySymbol) }} remaining</span>
         </div>
 
@@ -94,6 +97,7 @@ function saveCategory(id) {
 
           <div class="amount flex flex-wrap items-center gap-2 whitespace-nowrap text-sm">
             <span :class="statusTextClass[row.status]">{{ formatCurrency(row.spent, settings.currencySymbol) }}</span>
+            <span v-if="row.spent < 0" class="text-xs text-muted-foreground">refunds exceed spending</span>
             <span class="text-muted-foreground">/</span>
             <template v-if="editingCategoryId === row.category.id">
               <Input v-model="categoryInput" type="number" min="0" class="w-20" />
@@ -104,6 +108,10 @@ function saveCategory(id) {
               <Button variant="ghost" size="sm" @click="startEditCategory(row)">Edit</Button>
             </template>
           </div>
+        </div>
+        <div v-if="budget.unlistedSpent.value !== 0" class="flex items-center justify-between text-sm text-muted-foreground">
+          <span>Deleted categories</span>
+          <span class="amount">{{ formatCurrency(budget.unlistedSpent.value, settings.currencySymbol) }}</span>
         </div>
       </CardContent>
     </Card>

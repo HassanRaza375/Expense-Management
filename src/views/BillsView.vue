@@ -22,6 +22,7 @@ import {
 } from '@lucide/vue'
 import { useBills, useConnections, BILL_TYPES, BILL_STATUSES, MAX_ELECTRICITY_CONNECTIONS } from '../composables/useBills.js'
 import { useMeterReadings } from '../composables/useMeterReadings.js'
+import { useExpenses } from '../composables/useExpenses.js'
 import { useSettings } from '../composables/useSettings.js'
 import { formatCurrency } from '../utils/currency.js'
 import { formatDate } from '../utils/date.js'
@@ -37,6 +38,7 @@ import TrendChart from '../components/TrendChart.vue'
 import BillWizard from '../components/BillWizard.vue'
 import BillPaymentModal from '../components/BillPaymentModal.vue'
 import ConnectionFormModal from '../components/ConnectionFormModal.vue'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog/index.js'
 import { toast } from '@/components/ui/sonner/index.js'
 
 const router = useRouter()
@@ -44,6 +46,7 @@ const settings = useSettings().settings
 const bills = useBills()
 const connections = useConnections()
 const meterReadings = useMeterReadings()
+const { findById: findExpense } = useExpenses()
 
 const TYPE_ICONS = { electricity: Zap, gas: Flame, water: Droplet, internet: Wifi, mobile: Smartphone, rent: Home, other: FileText }
 const TYPE_COLORS = { electricity: '#D6963A', gas: '#D9695F', water: '#4A9498', internet: '#5FAE86', mobile: '#8FA0AC', rent: '#2E6E72', other: '#8FA0AC' }
@@ -110,9 +113,41 @@ function handlePaid() {
   toast('Bill marked paid — expense created')
 }
 
-function handleDeleteBill(bill) {
-  bills.deleteBill(bill.id)
-  toast('Bill deleted')
+// Deleting a bill always asks first and says exactly what goes with it; Undo brings everything back
+// (attachments are restored from memory, so Undo works until this page is closed or reloaded).
+const billToDelete = ref(null)
+const deleteImpact = computed(() => {
+  const b = billToDelete.value
+  if (!b) return null
+  return {
+    files: (b.attachments || []).length,
+    reading: b.currentReading != null,
+    keepsExpense: !!(b.linkedExpenseId && findExpense(b.linkedExpenseId)),
+  }
+})
+
+function askDeleteBill(bill) {
+  billToDelete.value = bill
+}
+
+async function confirmDeleteBill() {
+  const bill = billToDelete.value
+  billToDelete.value = null
+  if (!bill) return
+  const snapshot = await bills.deleteBill(bill.id)
+  if (!snapshot) return
+  const name = `${connectionName(bill.connectionId)} — ${bill.billingMonth}`
+  toast(`Bill deleted: ${name}`, {
+    duration: 15000,
+    action: {
+      label: 'Undo',
+      onClick: async () => {
+        const { restoredFiles, failedFiles } = await bills.restoreBill(snapshot)
+        if (failedFiles) toast.error(`Bill restored, but ${failedFiles} attachment${failedFiles === 1 ? '' : 's'} could not be recovered`)
+        else toast(restoredFiles ? `Bill restored with ${restoredFiles} attachment${restoredFiles === 1 ? '' : 's'}` : 'Bill restored')
+      },
+    },
+  })
 }
 
 const connectionModalOpen = ref(false)
@@ -219,7 +254,7 @@ function latestReadingFor(connectionId) {
                     <CheckCircle2 class="h-4 w-4" />
                   </Button>
                   <Button variant="ghost" size="icon" title="Edit" @click="openEditBill(bill)"><Pencil class="h-4 w-4" /></Button>
-                  <Button variant="ghost" size="icon" title="Delete" @click="handleDeleteBill(bill)"><Trash2 class="h-4 w-4" /></Button>
+                  <Button variant="ghost" size="icon" title="Delete" data-testid="delete-bill" @click="askDeleteBill(bill)"><Trash2 class="h-4 w-4" /></Button>
                 </div>
               </div>
             </CardContent>
@@ -317,6 +352,28 @@ function latestReadingFor(connectionId) {
 
     <BillWizard :open="wizardOpen" :bill="editingBill" @close="wizardOpen = false" @saved="toast('Bill saved')" />
     <BillPaymentModal :open="paymentOpen" :bill="payingBill" @close="paymentOpen = false" @paid="handlePaid" />
+
+    <Dialog :open="!!billToDelete" @update:open="(v) => !v && (billToDelete = null)">
+      <DialogContent class="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Delete this bill?</DialogTitle>
+          <DialogDescription v-if="billToDelete">{{ connectionName(billToDelete.connectionId) }} — {{ billToDelete.billingMonth }}</DialogDescription>
+        </DialogHeader>
+        <ul v-if="deleteImpact" class="m-0 flex list-disc flex-col gap-1 pl-5 text-sm" data-testid="bill-delete-impact">
+          <li v-if="deleteImpact.files">
+            {{ deleteImpact.files }} attachment{{ deleteImpact.files === 1 ? '' : 's' }} (photos/PDFs) will be <strong>deleted from this device</strong>.
+          </li>
+          <li v-if="deleteImpact.reading">Its meter reading will be removed from the reading history.</li>
+          <li v-if="deleteImpact.keepsExpense">The expense for its payment is <strong>kept</strong> in your spending, just no longer linked to a bill.</li>
+          <li v-if="!deleteImpact.files && !deleteImpact.reading && !deleteImpact.keepsExpense">Nothing else is attached to it.</li>
+        </ul>
+        <p class="m-0 text-xs text-muted-foreground">You can Undo straight afterwards. Attachments can only be brought back until you close or reload this page.</p>
+        <DialogFooter>
+          <Button variant="ghost" @click="billToDelete = null">Cancel</Button>
+          <Button variant="destructive" data-testid="confirm-delete-bill" @click="confirmDeleteBill">Delete bill</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     <ConnectionFormModal :open="connectionModalOpen" :connection="editingConnection" @close="connectionModalOpen = false" @save="connectionModalOpen = false" />
   </div>
 </template>

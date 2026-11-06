@@ -9,6 +9,9 @@ import { usageBytes } from '../utils/storage.js'
 import { buildBackup, parseBackup, summarizeBackup, applyBackup } from '../utils/backup.js'
 import { saveSnapshot, listSnapshots, clearSnapshots } from '../utils/snapshots.js'
 import { useExpenses } from '../composables/useExpenses.js'
+import { useCategories } from '../composables/useCategories.js'
+import { downloadTransactionsCsv } from '../utils/csvExport.js'
+import { sortTransactions } from '../utils/reporting.js'
 import { Checkbox } from '@/components/ui/checkbox/index.js'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card/index.js'
 import { Button } from '@/components/ui/button/index.js'
@@ -22,6 +25,7 @@ const router = useRouter()
 const { settings, updateProfile, setCurrencySymbol, setCycleResetDay } = useSettings()
 const { changePassword } = useAppLock()
 const { expenses } = useExpenses()
+const { categories } = useCategories()
 const { canInstall, isInstalled, promptInstall } = useInstallPrompt()
 
 const profileName = ref(settings.profileName)
@@ -60,13 +64,11 @@ async function exportFull() {
   }
 }
 
+// Same exporter as the Expenses page (utils/csvExport.js): ALL expenses, newest first, category names, kind column.
 function exportCSV() {
-  const header = 'date,amount,category,note,source\n'
-  const rows = expenses
-    .map((e) => [e.date, e.amount, e.categoryId, `"${(e.note || '').replace(/"/g, '""')}"`, e.source].join(','))
-    .join('\n')
-  const blob = new Blob([header + rows], { type: 'text/csv' })
-  triggerDownload(blob, `hisaab-expenses-${new Date().toISOString().slice(0, 10)}.csv`)
+  const names = Object.fromEntries(categories.map((c) => [c.id, c.name]))
+  const n = downloadTransactionsCsv(sortTransactions(expenses, 'newest'), { categoryNames: names })
+  toast.success(`Exported ${n} transaction${n === 1 ? '' : 's'}`)
 }
 
 function downloadJSON(obj, filename) {

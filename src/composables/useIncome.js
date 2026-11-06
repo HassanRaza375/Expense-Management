@@ -1,7 +1,6 @@
 import { reactive, watch } from 'vue'
 import { get, set, STORAGE_KEYS } from '../utils/storage.js'
 import { generateId } from '../utils/id.js'
-import { isWithinCycle } from '../utils/date.js'
 
 const state = reactive(get(STORAGE_KEYS.INCOME, []))
 
@@ -74,26 +73,6 @@ export function useIncome() {
     }
   }
 
-  function inCycle(cycle) {
-    return state.filter((i) => isWithinCycle(i.date, cycle))
-  }
-
-  function groupedByDay(list) {
-    const groups = {}
-    for (const i of list) {
-      const day = i.date.slice(0, 10)
-      if (!groups[day]) groups[day] = []
-      groups[day].push(i)
-    }
-    return Object.entries(groups)
-      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-      .map(([day, items]) => ({
-        day,
-        items: items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-        total: items.reduce((sum, i) => sum + i.amount, 0),
-      }))
-  }
-
   return {
     income: state,
     findById,
@@ -101,7 +80,5 @@ export function useIncome() {
     updateIncome,
     deleteIncome,
     undoDelete,
-    inCycle,
-    groupedByDay,
   }
 }

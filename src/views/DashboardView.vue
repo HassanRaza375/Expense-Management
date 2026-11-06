@@ -17,6 +17,7 @@ import { useLending } from '../composables/useLending.js'
 import { useInvestments } from '../composables/useInvestments.js'
 import { formatCurrency } from '../utils/currency.js'
 import { formatDate } from '../utils/date.js'
+import { dailySeries, weeklySeries, monthlySeries, formatDayKey } from '../utils/reporting.js'
 import { Card, CardContent } from '@/components/ui/card/index.js'
 import { Button } from '@/components/ui/button/index.js'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs/index.js'
@@ -31,7 +32,7 @@ const router = useRouter()
 const { settings } = useSettings()
 const budget = useBudget()
 const { getPending, sortedByDueDate, stampConfirmed } = useRecurring()
-const { addExpense, expenses, groupedByDay, groupedByWeek, groupedByMonth } = useExpenses()
+const { addExpense, expenses } = useExpenses()
 const { vehicles } = useVehicles()
 const { logs: maintenanceLogs, dueSoon } = useVehicleMaintenance()
 const { findById: findTag } = useVehicleTags()
@@ -57,31 +58,23 @@ const upcomingDueDates = computed(() =>
 
 const viewMode = ref('day')
 
+// Chart series are NET of refunds and bucketed by the user's LOCAL day (utils/reporting.js), so they add up to
+// the same "Spent this cycle" figure shown on the Budget and Expenses pages. Months are the last 6 calendar months
+// (empty months included); weeks start on Monday.
 const trendPoints = computed(() => {
-  if (viewMode.value === 'week') {
-    return groupedByWeek(budget.cycleExpenses.value)
-      .slice()
-      .reverse()
-      .map((g) => ({ date: g.week, total: g.total }))
-  }
-  if (viewMode.value === 'month') {
-    return groupedByMonth(expenses)
-      .slice(0, 6)
-      .slice()
-      .reverse()
-      .map((g) => ({ date: g.month + '-01', total: g.total }))
-  }
-  return groupedByDay(budget.cycleExpenses.value)
-    .slice()
-    .reverse()
-    .map((g) => ({ date: g.day, total: g.total }))
+  if (viewMode.value === 'week') return weeklySeries(budget.cycleExpenses.value)
+  if (viewMode.value === 'month') return monthlySeries(expenses, { months: 6 })
+  return dailySeries(budget.cycleExpenses.value)
 })
 
-const donutSegments = computed(() =>
-  budget.categoryBreakdown.value
+// A donut can only draw positive slices: categories whose net is zero or negative (refunds >= spending) are left out.
+const donutSegments = computed(() => {
+  const segments = budget.categoryBreakdown.value
     .filter((c) => c.spent > 0)
     .map((c) => ({ label: c.category.name, value: c.spent, color: c.category.color }))
-)
+  if (budget.unlistedSpent.value > 0) segments.push({ label: 'Deleted category', value: budget.unlistedSpent.value, color: '#8FA0AC' })
+  return segments
+})
 
 const hasAnyData = computed(
   () =>
@@ -95,9 +88,7 @@ const hasAnyData = computed(
     funds.length > 0
 )
 
-function inCycle(date) {
-  return budget.cycle.value && new Date(date) >= budget.cycle.value.start && new Date(date) <= budget.cycle.value.end
-}
+const inCycle = (date) => budget.inCycle(date)
 const vehicleCycleCost = computed(
   () =>
     maintenanceLogs.filter((l) => inCycle(l.date)).reduce((sum, l) => sum + (l.cost || 0), 0) +
@@ -196,7 +187,12 @@ function handleSnooze() {
           :value="budget.cycleIncome.value > 0 ? budget.savingsRate.value.toFixed(0) + '%' : '—'"
           :status="budget.savingsRate.value >= 0 ? 'good' : 'over'"
         />
-        <StatCard :icon="Wallet" label="Spent this cycle" :value="formatCurrency(budget.cycleSpent.value, settings.currencySymbol)" />
+        <StatCard
+          :icon="Wallet"
+          label="Spent this cycle"
+          :value="formatCurrency(budget.cycleSpent.value, settings.currencySymbol)"
+          :sub="budget.cycleRefunds.value > 0 ? `After ${formatCurrency(budget.cycleRefunds.value, settings.currencySymbol)} of refunds` : ''"
+        />
       </section>
 
       <section class="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -251,7 +247,7 @@ function handleSnooze() {
           :icon="Flame"
           label="Highest spend day"
           :value="formatCurrency(budget.highestSpendDay.value.total, settings.currencySymbol)"
-          :sub="formatDate(budget.highestSpendDay.value.day, 'short')"
+          :sub="formatDayKey(budget.highestSpendDay.value.day, { year: false })"
         />
       </section>
 

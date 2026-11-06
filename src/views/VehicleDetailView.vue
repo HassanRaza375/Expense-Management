@@ -49,9 +49,7 @@ const fuelMonthGroups = computed(() => fuelGroupedByMonth(fuelLogs.value))
 const mileage = computed(() => mileageStats(route.params.id))
 const lastFillUp = computed(() => fuelLogs.value[0] || null)
 
-function inCycle(date) {
-  return budget.cycle.value && new Date(date) >= budget.cycle.value.start && new Date(date) <= budget.cycle.value.end
-}
+const inCycle = (date) => budget.inCycle(date)
 
 const cycleCost = computed(
   () =>

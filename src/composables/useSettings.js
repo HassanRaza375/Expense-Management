@@ -10,6 +10,7 @@ const defaults = {
   overallBudget: 0,
   categoryBudgets: {}, // { [categoryId]: number }
   rollover: false,
+  lastCategoryId: '', // category used for the previous new expense (pre-selected in the form)
 }
 
 const state = reactive({ ...defaults, ...get(STORAGE_KEYS.SETTINGS, {}) })
@@ -61,6 +62,10 @@ export function useSettings() {
     state.rollover = !!enabled
   }
 
+  function setLastCategoryId(id) {
+    state.lastCategoryId = id || ''
+  }
+
   function resetAllSettings() {
     Object.assign(state, defaults)
   }
@@ -76,6 +81,7 @@ export function useSettings() {
     setCategoryBudget,
     removeCategoryBudget,
     setRollover,
+    setLastCategoryId,
     resetAllSettings,
   }
 }

@@ -3,6 +3,7 @@ import { reactive, watch, ref } from 'vue'
 import { useBills, PAYMENT_METHODS } from '../composables/useBills.js'
 import { useCategories } from '../composables/useCategories.js'
 import { toInputDate } from '../utils/date.js'
+import { localNoonISO, isDayKey } from '../utils/reporting.js'
 import { formatCurrency } from '../utils/currency.js'
 import { useSettings } from '../composables/useSettings.js'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog/index.js'
@@ -48,9 +49,13 @@ watch(
 
 function submit() {
   error.value = ''
+  if (!isDayKey(form.paidDate)) {
+    error.value = 'Pick the payment date'
+    return
+  }
   try {
     markPaid(props.bill.id, {
-      paidDate: new Date(form.paidDate).toISOString(),
+      paidDate: localNoonISO(form.paidDate),
       paidBy: form.paidBy,
       paymentMethod: form.paymentMethod,
       transactionReference: form.transactionReference,

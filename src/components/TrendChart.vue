@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { formatDate } from '../utils/date.js'
+import { formatDayKey, isDayKey } from '../utils/reporting.js'
 import { useSettings } from '@/composables/useSettings.js'
 
 const props = defineProps({
@@ -18,7 +19,8 @@ const series = computed(() => [{ name: 'Spent', data: props.points.map((p) => p.
 const chartOptions = computed(() => ({
   chart: { type: 'bar', background: 'transparent', toolbar: { show: false } },
   xaxis: {
-    categories: props.points.map((p) => formatDate(p.date, 'short')),
+    // day keys ('YYYY-MM-DD') are formatted without a time zone so a label can never land on the wrong day
+    categories: props.points.map((p) => (isDayKey(p.date) ? formatDayKey(p.date, { year: false }) : formatDate(p.date, 'short'))),
     labels: { style: { colors: 'var(--muted-foreground)' } },
     axisBorder: { show: false },
     axisTicks: { show: false },

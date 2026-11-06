@@ -3,7 +3,8 @@ import { ref, computed } from 'vue'
 import { Plus, Pencil, Trash2 } from '@lucide/vue'
 import { useIncome, INCOME_SOURCE_LABELS } from '../composables/useIncome.js'
 import { useSettings } from '../composables/useSettings.js'
-import { getCycle, getAdjacentCycle, isWithinCycle, formatDate } from '../utils/date.js'
+import { incomeOverview, sanitizeResetDay } from '../utils/budgetMath.js'
+import { formatDayKey } from '../utils/reporting.js'
 import { formatCurrency } from '../utils/currency.js'
 import IncomeFormModal from '../components/IncomeFormModal.vue'
 import { Card, CardContent } from '@/components/ui/card/index.js'
@@ -11,30 +12,19 @@ import { Button } from '@/components/ui/button/index.js'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select/index.js'
 import { toast } from '@/components/ui/sonner/index.js'
 
-const { income, addIncome, updateIncome, deleteIncome, undoDelete, groupedByDay } = useIncome()
+const { income, addIncome, updateIncome, deleteIncome, undoDelete } = useIncome()
 const { settings } = useSettings()
 
-const filterCycleMode = ref('this') // this | last | custom | all
+const filterCycleMode = ref('this') // this | last | all
 
 const modalOpen = ref(false)
 const editingIncome = ref(null)
 
-const currentCycle = computed(() => getCycle(new Date(), settings.cycleResetDay))
-const lastCycle = computed(() => getAdjacentCycle(currentCycle.value.start, settings.cycleResetDay, -1))
-
-const activeCycle = computed(() => {
-  if (filterCycleMode.value === 'this') return currentCycle.value
-  if (filterCycleMode.value === 'last') return lastCycle.value
-  return null
-})
-
-const filtered = computed(() => {
-  if (!activeCycle.value) return income
-  return income.filter((i) => isWithinCycle(i.date, activeCycle.value))
-})
-
-const groups = computed(() => groupedByDay(filtered.value))
-const total = computed(() => filtered.value.reduce((sum, i) => sum + i.amount, 0))
+// Filtering, grouping by LOCAL day and the total all come from utils/budgetMath.js + reporting.js (the same cycle logic
+// as the Dashboard, Budget and Expenses pages). The page itself does no date math.
+const overview = computed(() => incomeOverview(income, { mode: filterCycleMode.value, now: new Date(), resetDay: sanitizeResetDay(settings.cycleResetDay) }))
+const groups = computed(() => overview.value.groups)
+const total = computed(() => overview.value.total)
 
 function openAdd() {
   editingIncome.value = null
@@ -76,7 +66,7 @@ function handleDelete(id) {
               <SelectItem value="all">All time</SelectItem>
             </SelectContent>
           </Select>
-          <span class="text-sm text-muted-foreground">Total: {{ formatCurrency(total, settings.currencySymbol) }}</span>
+          <span class="text-sm text-muted-foreground" data-testid="income-total">Total: {{ formatCurrency(total, settings.currencySymbol) }}</span>
         </div>
         <Button class="w-full sm:w-auto" @click="openAdd"><Plus class="h-4 w-4" /> Add income</Button>
       </CardContent>
@@ -86,10 +76,10 @@ function handleDelete(id) {
       <CardContent class="p-8 text-center text-muted-foreground">No income recorded for this period.</CardContent>
     </Card>
 
-    <div v-for="group in groups" :key="group.day" class="flex flex-col gap-2">
+    <div v-for="group in groups" :key="group.dayKey ?? 'unknown'" class="flex flex-col gap-2" data-testid="income-day">
       <div class="flex justify-between px-1 text-sm text-muted-foreground">
-        <span>{{ formatDate(group.day, 'long') }}</span>
-        <span class="amount">{{ formatCurrency(group.total, settings.currencySymbol) }}</span>
+        <span>{{ group.dayKey ? formatDayKey(group.dayKey, { weekday: true }) : 'Date unreadable' }}</span>
+        <span class="amount">{{ formatCurrency(group.net, settings.currencySymbol) }}</span>
       </div>
       <Card class="overflow-hidden py-0">
         <div v-for="inc in group.items" :key="inc.id" class="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">

@@ -1,7 +1,8 @@
 <script setup>
 import { reactive, computed, watch } from 'vue'
 import { toInputDate } from '../utils/date.js'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog/index.js'
+import { resolveSavedDate } from '../utils/reporting.js'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog/index.js'
 import { Button } from '@/components/ui/button/index.js'
 import { Input } from '@/components/ui/input/index.js'
 import { Label } from '@/components/ui/label/index.js'
@@ -67,7 +68,7 @@ function submit() {
     direction: activeDirection.value,
     personName: form.personName,
     amount: form.amount,
-    date: new Date(form.date).toISOString(),
+    date: resolveSavedDate(props.loan?.date, form.date), // unchanged day keeps the stored value; a new/changed day is saved as local noon
     dueDate: form.dueDate ? new Date(form.dueDate).toISOString() : '',
     notes: form.notes,
   })
@@ -81,6 +82,7 @@ function submit() {
         <DialogTitle>
           {{ loan ? 'Edit ' : 'Add ' }}{{ isBorrowed ? 'borrowing' : 'loan' }}
         </DialogTitle>
+        <DialogDescription class="sr-only">Enter who it is with, the amount and the date, then save.</DialogDescription>
       </DialogHeader>
 
       <div class="flex flex-col gap-3">

@@ -1,6 +1,7 @@
 <script setup>
 import { reactive, computed, watch } from 'vue'
 import { toInputDate } from '../utils/date.js'
+import { resolveSavedDate } from '../utils/reporting.js'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog/index.js'
 import { Button } from '@/components/ui/button/index.js'
 import { Input } from '@/components/ui/input/index.js'
@@ -73,7 +74,7 @@ function submit() {
     return
   }
   emit('save', {
-    date: new Date(form.date).toISOString(),
+    date: resolveSavedDate(props.log?.date, form.date), // unchanged day keeps the stored value; a new/changed day is saved as local noon
     odometer: form.odometer,
     liters: form.liters,
     cost: form.cost,

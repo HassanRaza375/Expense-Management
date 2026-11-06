@@ -84,9 +84,17 @@ export function useMeterReadings() {
     }
   }
 
+  // Returns the removed readings so a deleted bill can be restored with them.
   function removeByBillId(billId) {
     const idx = state.findIndex((r) => r.billId === billId)
-    if (idx !== -1) state.splice(idx, 1)
+    return idx !== -1 ? state.splice(idx, 1) : []
+  }
+
+  function restoreReadings(entries) {
+    const present = new Set(state.map((r) => r.id))
+    for (const entry of entries || []) {
+      if (!present.has(entry.id)) state.push(entry)
+    }
   }
 
   function deleteReading(id) {
@@ -141,6 +149,7 @@ export function useMeterReadings() {
     updateReading,
     syncFromBill,
     removeByBillId,
+    restoreReadings,
     deleteReading,
     undoDelete,
     history,

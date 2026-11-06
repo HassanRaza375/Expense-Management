@@ -4,7 +4,9 @@ import { Plus } from '@lucide/vue'
 import { useRecurring } from '../composables/useRecurring.js'
 import { useCategories } from '../composables/useCategories.js'
 import { useSettings } from '../composables/useSettings.js'
-import { getCycle, toInputDate } from '../utils/date.js'
+import { toInputDate } from '../utils/date.js'
+import { currentCycle } from '../utils/reporting.js'
+import { toDateCycle, sanitizeResetDay } from '../utils/budgetMath.js'
 import { formatCurrency } from '../utils/currency.js'
 import { Card, CardContent } from '@/components/ui/card/index.js'
 import { Button } from '@/components/ui/button/index.js'
@@ -18,7 +20,7 @@ const { recurring, addTemplate, updateTemplate, togglePause, deleteTemplate, sor
 const { sorted } = useCategories()
 const { settings } = useSettings()
 
-const cycle = computed(() => getCycle(new Date(), settings.cycleResetDay))
+const cycle = computed(() => toDateCycle(currentCycle(new Date(), sanitizeResetDay(settings.cycleResetDay))))
 const list = computed(() => sortedByDueDate(cycle.value).concat(recurring.filter((r) => !r.active)))
 
 const modalOpen = ref(false)

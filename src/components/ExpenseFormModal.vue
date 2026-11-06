@@ -1,8 +1,9 @@
 <script setup>
-import { reactive, watch } from 'vue'
+import { reactive, ref, watch, nextTick } from 'vue'
 import { useCategories } from '../composables/useCategories.js'
-import { toInputDate } from '../utils/date.js'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog/index.js'
+import { useSettings } from '../composables/useSettings.js'
+import { localDayKey, addDays, isDayKey, resolveSavedDate } from '../utils/reporting.js'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog/index.js'
 import { Button } from '@/components/ui/button/index.js'
 import { Input } from '@/components/ui/input/index.js'
 import { Label } from '@/components/ui/label/index.js'
@@ -13,55 +14,110 @@ const props = defineProps({
   expense: { type: Object, default: null }, // null = create mode
 })
 
+// save(payload, { another }) — `another` is true for "Save & add another" (create mode only)
 const emit = defineEmits(['close', 'save'])
 
 const { sorted } = useCategories()
+const { settings } = useSettings()
 
 const form = reactive({
-  date: toInputDate(new Date()),
+  kind: 'expense', // 'expense' | 'refund'
   amount: '',
+  date: '',
   categoryId: '',
   note: '',
 })
+
+const today = ref('')
+const yesterday = ref('')
+const addedCount = ref(0)
+const error = reactive({ message: '' })
+const amountInput = ref(null)
+
+function startCategory() {
+  const remembered = settings.lastCategoryId
+  if (remembered && sorted().some((c) => c.id === remembered)) return remembered
+  return sorted()[0]?.id || ''
+}
+
+function focusAmount() {
+  // Dialogs move focus themselves when they open; wait for that, then put the cursor in Amount.
+  nextTick(() => setTimeout(() => amountInput.value?.$el?.focus(), 80))
+}
+
+// Quick buttons hand focus straight back to Amount, so Enter still saves (a focused button would
+// otherwise swallow Enter and re-trigger itself).
+function pickDay(key) {
+  form.date = key
+  amountInput.value?.$el?.focus()
+}
+function pickKind(kind) {
+  form.kind = kind
+  amountInput.value?.$el?.focus()
+}
 
 watch(
   () => [props.open, props.expense],
   () => {
     if (!props.open) return
+    error.message = ''
+    addedCount.value = 0
+    today.value = localDayKey(new Date())
+    yesterday.value = addDays(today.value, -1)
     if (props.expense) {
-      form.date = toInputDate(props.expense.date)
+      form.kind = props.expense.kind === 'refund' ? 'refund' : 'expense'
       form.amount = props.expense.amount
+      // read through localDayKey so OLD (UTC-midnight) and NEW (local-noon) records both show the right day
+      form.date = localDayKey(props.expense.date) || today.value
       form.categoryId = props.expense.categoryId
       form.note = props.expense.note || ''
     } else {
-      form.date = toInputDate(new Date())
+      form.kind = 'expense'
       form.amount = ''
-      form.categoryId = sorted()[0]?.id || ''
+      form.date = today.value
+      form.categoryId = startCategory()
       form.note = ''
     }
+    focusAmount()
   },
   { immediate: true }
 )
 
-const error = reactive({ message: '' })
-
-function submit() {
+function submit(another = false) {
   error.message = ''
   const amt = Number(form.amount)
   if (!(amt > 0)) {
-    error.message = 'Amount must be greater than 0'
+    error.message = 'Enter an amount greater than 0'
+    focusAmount()
     return
   }
   if (!form.categoryId) {
-    error.message = 'Category is required'
+    error.message = 'Choose a category'
     return
   }
-  emit('save', {
-    date: new Date(form.date).toISOString(),
-    amount: amt,
-    categoryId: form.categoryId,
-    note: form.note,
-  })
+  if (!isDayKey(form.date)) {
+    error.message = 'Pick a valid date'
+    return
+  }
+  const keepOpen = another && !props.expense
+  emit(
+    'save',
+    {
+      // unchanged day => the stored date is kept as-is; a new/changed day is stored as local noon
+      date: resolveSavedDate(props.expense?.date, form.date),
+      amount: amt,
+      categoryId: form.categoryId,
+      note: form.note,
+      kind: form.kind,
+    },
+    { another: keepOpen }
+  )
+  if (keepOpen) {
+    addedCount.value++
+    form.amount = ''
+    form.note = ''
+    focusAmount()
+  }
 }
 
 function categoryLabel(id) {
@@ -74,18 +130,46 @@ function categoryLabel(id) {
   <Dialog :open="open" @update:open="(v) => !v && emit('close')">
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>{{ expense ? 'Edit expense' : 'Add expense' }}</DialogTitle>
+        <DialogTitle>{{ expense ? (form.kind === 'refund' ? 'Edit refund' : 'Edit expense') : form.kind === 'refund' ? 'Add refund' : 'Add expense' }}</DialogTitle>
+        <DialogDescription class="sr-only">Enter the amount, choose the day and category, then save. Press Enter to save.</DialogDescription>
       </DialogHeader>
 
-      <div class="flex flex-col gap-3">
+      <form class="flex flex-col gap-4" @submit.prevent="submit(false)">
         <div class="flex flex-col gap-1.5">
-          <Label>Date</Label>
-          <Input v-model="form.date" type="date" />
+          <Label for="expense-amount">{{ form.kind === 'refund' ? 'Refund amount' : 'Amount' }}</Label>
+          <Input
+            id="expense-amount"
+            ref="amountInput"
+            v-model="form.amount"
+            type="number"
+            inputmode="decimal"
+            min="0"
+            step="0.01"
+            placeholder="0.00"
+            autocomplete="off"
+            class="amount h-12 text-2xl"
+          />
         </div>
+
         <div class="flex flex-col gap-1.5">
-          <Label>Amount</Label>
-          <Input v-model="form.amount" type="number" min="0" step="0.01" placeholder="0.00" />
+          <div class="grid grid-cols-2 gap-2" role="group" aria-label="Type">
+            <Button type="button" :variant="form.kind === 'expense' ? 'default' : 'outline'" :aria-pressed="form.kind === 'expense'" @click="pickKind('expense')">Expense</Button>
+            <Button type="button" :variant="form.kind === 'refund' ? 'default' : 'outline'" :aria-pressed="form.kind === 'refund'" @click="pickKind('refund')">Refund</Button>
+          </div>
+          <p v-if="form.kind === 'refund'" class="m-0 text-xs text-muted-foreground">
+            A refund is money coming back. It reduces your spending. Use the category of the original purchase.
+          </p>
         </div>
+
+        <div class="flex flex-col gap-1.5">
+          <Label for="expense-date">Date</Label>
+          <div class="flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" :variant="form.date === today ? 'default' : 'outline'" @click="pickDay(today)">Today</Button>
+            <Button type="button" size="sm" :variant="form.date === yesterday ? 'default' : 'outline'" @click="pickDay(yesterday)">Yesterday</Button>
+            <Input id="expense-date" v-model="form.date" type="date" class="min-w-36 flex-1" />
+          </div>
+        </div>
+
         <div class="flex flex-col gap-1.5">
           <Label>Category</Label>
           <Select v-model="form.categoryId">
@@ -97,18 +181,21 @@ function categoryLabel(id) {
             </SelectContent>
           </Select>
         </div>
+
         <div class="flex flex-col gap-1.5">
-          <Label>Note (optional)</Label>
-          <Input v-model="form.note" type="text" placeholder="What was this for?" />
+          <Label for="expense-note">Note (optional)</Label>
+          <Input id="expense-note" v-model="form.note" type="text" placeholder="What was this for?" autocomplete="off" />
         </div>
-      </div>
 
-      <p v-if="error.message" class="m-0 text-sm text-destructive">{{ error.message }}</p>
+        <p v-if="error.message" class="m-0 text-sm text-destructive" role="alert">{{ error.message }}</p>
+        <p v-else-if="addedCount" class="m-0 text-sm text-status-good" role="status">Added ({{ addedCount }} so far). Enter the next one.</p>
 
-      <DialogFooter>
-        <Button variant="ghost" @click="emit('close')">Cancel</Button>
-        <Button @click="submit">{{ expense ? 'Save' : 'Add' }}</Button>
-      </DialogFooter>
+        <DialogFooter>
+          <Button type="button" variant="ghost" @click="emit('close')">{{ addedCount ? 'Done' : 'Cancel' }}</Button>
+          <Button v-if="!expense" type="button" variant="outline" @click="submit(true)">Save &amp; add another</Button>
+          <Button type="submit">{{ expense ? 'Save' : 'Add' }}</Button>
+        </DialogFooter>
+      </form>
     </DialogContent>
   </Dialog>
 </template>

@@ -1,7 +1,7 @@
 import { reactive, watch } from 'vue'
 import { get, set, STORAGE_KEYS } from '../utils/storage.js'
 import { generateId } from '../utils/id.js'
-import { putAttachment, deleteAttachment } from '../utils/attachments.js'
+import { putAttachment, deleteAttachment, getAttachment } from '../utils/attachments.js'
 import { useExpenses } from './useExpenses.js'
 import { useCategories } from './useCategories.js'
 import { useMeterReadings } from './useMeterReadings.js'
@@ -141,7 +141,7 @@ export function useConnections() {
 // ---------- Bills ----------
 
 export function useBills() {
-  const { addExpense, updateExpense } = useExpenses()
+  const { addExpense, updateExpense, findById: findExpense, clearBillLinks, restoreBillLinks } = useExpenses()
   const { findById: findCategoryById } = useCategories()
   const meterReadings = useMeterReadings()
 
@@ -238,15 +238,53 @@ export function useBills() {
     }
   }
 
-  function deleteBill(id) {
+  // Deletes a bill and returns a snapshot that restoreBill() can put back: the bill itself, its attachment FILES
+  // (read into memory before they are deleted from IndexedDB), its meter reading, and the ids of the expenses that
+  // were unlinked. The expense of a paid bill is KEPT (the money was spent); it just stops pointing at the bill.
+  // The snapshot lives only in memory, so Undo works until the page is closed or reloaded.
+  async function deleteBill(id) {
     const bill = findBill(id)
-    if (!bill) return
-    for (const att of bill.attachments) {
+    if (!bill) return null
+    const files = []
+    let unreadable = 0
+    for (const att of bill.attachments || []) {
+      try {
+        const entry = await getAttachment(att.id)
+        if (entry) files.push(entry)
+        else unreadable++
+      } catch {
+        unreadable++
+      }
+    }
+    const idx = state.bills.findIndex((b) => b.id === id)
+    if (idx === -1) return null
+    const readings = meterReadings.removeByBillId(bill.id)
+    const expenseIds = clearBillLinks(bill.id)
+    const [removed] = state.bills.splice(idx, 1)
+    for (const att of removed.attachments || []) {
       deleteAttachment(att.id).catch(() => {})
     }
-    meterReadings.removeByBillId(bill.id)
-    const idx = state.bills.findIndex((b) => b.id === id)
-    if (idx !== -1) state.bills.splice(idx, 1)
+    return { bill: removed, index: idx, files, unreadable, readings, expenseIds }
+  }
+
+  // Undo for deleteBill(). Returns { restoredFiles, failedFiles }: files that could not be read before the delete
+  // (snapshot.unreadable) or cannot be written back are reported, never silently dropped.
+  async function restoreBill(snapshot) {
+    if (!snapshot || findBill(snapshot.bill.id)) return { restoredFiles: 0, failedFiles: 0 }
+    state.bills.splice(Math.min(snapshot.index, state.bills.length), 0, snapshot.bill)
+    meterReadings.restoreReadings(snapshot.readings)
+    restoreBillLinks(snapshot.expenseIds, snapshot.bill.id)
+    let restoredFiles = 0
+    let failedFiles = snapshot.unreadable || 0
+    for (const entry of snapshot.files) {
+      try {
+        await putAttachment(entry)
+        restoredFiles++
+      } catch {
+        failedFiles++
+      }
+    }
+    return { restoredFiles, failedFiles }
   }
 
   function markPaid(id, { paidDate, paidBy, paymentMethod, transactionReference, categoryId }) {
@@ -257,7 +295,7 @@ export function useBills() {
     const connection = findConnection(bill.connectionId)
     const total = bill.amount + (bill.arrears || 0)
 
-    if (bill.linkedExpenseId) {
+    if (bill.linkedExpenseId && findExpense(bill.linkedExpenseId)) {
       updateExpense(bill.linkedExpenseId, { amount: total, categoryId: category?.id })
     } else {
       const expense = addExpense({
@@ -276,6 +314,48 @@ export function useBills() {
     bill.paidBy = paidBy || ''
     bill.paymentMethod = paymentMethod || null
     bill.transactionReference = transactionReference || ''
+  }
+
+  // The bill (if any) whose payment created this expense.
+  function linkedBillFor(expenseId) {
+    return state.bills.find((b) => b.linkedExpenseId === expenseId) || null
+  }
+
+  // Called when expenses are deleted from the Expenses page: a bill that expense paid goes back to UNPAID (and its
+  // payment details are cleared) so it can be paid, and counted, again. Returns what it changed so the delete can be undone.
+  function unlinkExpenses(expenseIds) {
+    const changes = []
+    for (const id of expenseIds || []) {
+      const bill = linkedBillFor(id)
+      if (!bill) continue
+      changes.push({
+        billId: bill.id,
+        before: {
+          status: bill.status,
+          paidDate: bill.paidDate,
+          paidBy: bill.paidBy,
+          paymentMethod: bill.paymentMethod,
+          transactionReference: bill.transactionReference,
+          linkedExpenseId: bill.linkedExpenseId,
+        },
+      })
+      if (bill.status === 'paid') {
+        bill.status = 'unpaid'
+        bill.paidDate = null
+        bill.paidBy = ''
+        bill.paymentMethod = null
+        bill.transactionReference = ''
+      }
+      bill.linkedExpenseId = null
+    }
+    return changes
+  }
+
+  function restoreLinks(changes) {
+    for (const { billId, before } of changes || []) {
+      const bill = findBill(billId)
+      if (bill) Object.assign(bill, before)
+    }
   }
 
   async function addAttachment(bill, file, kind) {
@@ -395,7 +475,11 @@ export function useBills() {
     addBill,
     updateBill,
     deleteBill,
+    restoreBill,
     markPaid,
+    linkedBillFor,
+    unlinkExpenses,
+    restoreLinks,
     addAttachment,
     removeAttachment,
     sortedByDueDate,

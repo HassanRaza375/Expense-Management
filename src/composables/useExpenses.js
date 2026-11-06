@@ -1,7 +1,6 @@
 import { reactive, watch } from 'vue'
 import { get, set, STORAGE_KEYS } from '../utils/storage.js'
 import { generateId } from '../utils/id.js'
-import { isWithinCycle } from '../utils/date.js'
 
 const state = reactive(get(STORAGE_KEYS.EXPENSES, []))
 
@@ -20,10 +19,13 @@ export function useExpenses() {
     return state.find((e) => e.id === id)
   }
 
-  function addExpense({ date, amount, categoryId, note, source = 'manual', recurringId = null, billId = null }) {
+  // `kind` is optional. Only 'refund' is ever stored (amount stays POSITIVE); an ordinary expense has
+  // no `kind` field at all, so existing records and new ordinary expenses have exactly the same shape.
+  function addExpense({ date, amount, categoryId, note, source = 'manual', recurringId = null, billId = null, kind }) {
     const amt = Number(amount)
     if (!(amt > 0)) throw new Error('Amount must be greater than 0')
     if (!categoryId) throw new Error('Category is required')
+    if (kind !== undefined && kind !== 'expense' && kind !== 'refund') throw new Error('Kind must be "expense" or "refund"')
     const expense = {
       id: generateId(),
       date: date || new Date().toISOString(),
@@ -35,6 +37,7 @@ export function useExpenses() {
       billId,
       createdAt: new Date().toISOString(),
     }
+    if (kind === 'refund') expense.kind = 'refund'
     state.push(expense)
     return expense
   }
@@ -46,6 +49,11 @@ export function useExpenses() {
       const amt = Number(patch.amount)
       if (!(amt > 0)) throw new Error('Amount must be greater than 0')
       exp.amount = amt
+    }
+    if (patch.kind !== undefined) {
+      if (patch.kind !== 'expense' && patch.kind !== 'refund') throw new Error('Kind must be "expense" or "refund"')
+      if (patch.kind === 'refund') exp.kind = 'refund'
+      else delete exp.kind
     }
     if (patch.date !== undefined) exp.date = patch.date
     if (patch.categoryId !== undefined) exp.categoryId = patch.categoryId
@@ -83,10 +91,20 @@ export function useExpenses() {
     return copy
   }
 
+  // Returns the removed records so the caller can offer Undo via restoreMany().
   function deleteMany(ids) {
     const idSet = new Set(ids)
+    const removed = []
     for (let i = state.length - 1; i >= 0; i--) {
-      if (idSet.has(state[i].id)) state.splice(i, 1)
+      if (idSet.has(state[i].id)) removed.push(...state.splice(i, 1))
+    }
+    return removed.reverse()
+  }
+
+  function restoreMany(items) {
+    const present = new Set(state.map((e) => e.id))
+    for (const item of items || []) {
+      if (!present.has(item.id)) state.push(item)
     }
   }
 
@@ -96,60 +114,24 @@ export function useExpenses() {
     })
   }
 
-  function inCycle(cycle) {
-    return state.filter((e) => isWithinCycle(e.date, cycle))
+  // Used when a bill is deleted: the money was still spent, so the expense stays, but it no longer points at the bill.
+  // Returns the ids it unlinked so the delete can be undone with restoreBillLinks().
+  function clearBillLinks(billId) {
+    const ids = []
+    for (const e of state) {
+      if (e.billId === billId) {
+        e.billId = null
+        ids.push(e.id)
+      }
+    }
+    return ids
   }
 
-  function groupedByDay(list) {
-    const groups = {}
-    for (const e of list) {
-      const day = e.date.slice(0, 10)
-      if (!groups[day]) groups[day] = []
-      groups[day].push(e)
+  function restoreBillLinks(ids, billId) {
+    for (const id of ids || []) {
+      const e = findById(id)
+      if (e && !e.billId) e.billId = billId
     }
-    return Object.entries(groups)
-      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-      .map(([day, items]) => ({
-        day,
-        items: items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-        total: items.reduce((sum, e) => sum + e.amount, 0),
-      }))
-  }
-
-  function groupedByWeek(list) {
-    const groups = {}
-    for (const e of list) {
-      const d = new Date(e.date)
-      const weekStart = new Date(d)
-      weekStart.setHours(0, 0, 0, 0)
-      weekStart.setDate(weekStart.getDate() - weekStart.getDay())
-      const key = weekStart.toISOString().slice(0, 10)
-      if (!groups[key]) groups[key] = []
-      groups[key].push(e)
-    }
-    return Object.entries(groups)
-      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-      .map(([week, items]) => ({
-        week,
-        items,
-        total: items.reduce((sum, e) => sum + e.amount, 0),
-      }))
-  }
-
-  function groupedByMonth(list) {
-    const groups = {}
-    for (const e of list) {
-      const key = e.date.slice(0, 7)
-      if (!groups[key]) groups[key] = []
-      groups[key].push(e)
-    }
-    return Object.entries(groups)
-      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-      .map(([month, items]) => ({
-        month,
-        items,
-        total: items.reduce((sum, e) => sum + e.amount, 0),
-      }))
   }
 
   return {
@@ -161,10 +143,9 @@ export function useExpenses() {
     undoDelete,
     duplicateExpense,
     deleteMany,
+    restoreMany,
     reassignCategory,
-    inCycle,
-    groupedByDay,
-    groupedByWeek,
-    groupedByMonth,
+    clearBillLinks,
+    restoreBillLinks,
   }
 }

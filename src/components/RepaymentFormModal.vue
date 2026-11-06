@@ -1,7 +1,8 @@
 <script setup>
 import { reactive, watch } from 'vue'
 import { toInputDate } from '../utils/date.js'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog/index.js'
+import { resolveSavedDate } from '../utils/reporting.js'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog/index.js'
 import { Button } from '@/components/ui/button/index.js'
 import { Input } from '@/components/ui/input/index.js'
 import { Label } from '@/components/ui/label/index.js'
@@ -49,7 +50,7 @@ function submit() {
     return
   }
   emit('save', {
-    date: new Date(form.date).toISOString(),
+    date: resolveSavedDate(undefined, form.date), // repayments are only ever created: saved as local noon of the chosen day
     amount: amt,
     notes: form.notes,
   })
@@ -61,6 +62,7 @@ function submit() {
     <DialogContent>
       <DialogHeader>
         <DialogTitle>Add repayment</DialogTitle>
+        <DialogDescription class="sr-only">Enter the repayment amount and the date, then save.</DialogDescription>
       </DialogHeader>
 
       <div class="flex flex-col gap-3">
