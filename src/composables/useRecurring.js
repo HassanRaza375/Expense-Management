@@ -18,7 +18,7 @@ export function useRecurring() {
     return state.find((r) => r.id === id)
   }
 
-  function addTemplate({ name, categoryId, amountMode, amount, dueDay, leadDays, endDate }) {
+  function addTemplate({ name, categoryId, amountMode, amount, dueDay, leadDays, endDate, accountId }) {
     if (!name || !name.trim()) throw new Error('Name is required')
     if (!categoryId) throw new Error('Category is required')
     const template = {
@@ -34,6 +34,7 @@ export function useRecurring() {
       lastConfirmedCycle: null,
       createdAt: new Date().toISOString(),
     }
+    if (accountId) template.accountId = accountId // optional; absent = the default account (if any) when confirmed
     state.push(template)
     return template
   }
@@ -41,7 +42,12 @@ export function useRecurring() {
   function updateTemplate(id, patch) {
     const tpl = findById(id)
     if (!tpl) return
-    Object.assign(tpl, patch)
+    const { accountId, ...rest } = patch
+    Object.assign(tpl, rest)
+    if (accountId !== undefined) {
+      if (accountId) tpl.accountId = accountId
+      else delete tpl.accountId
+    }
   }
 
   function togglePause(id) {

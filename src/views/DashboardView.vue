@@ -1,11 +1,19 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Wallet, PiggyBank, CalendarClock, BellRing, Gauge, Flame, Crown, TrendingUp, TrendingDown, CalendarDays, Wrench, Banknote, Percent, ReceiptText, Package, HandCoins, Zap, Droplet, ChartCandlestick } from '@lucide/vue'
+import { Scale, Landmark, Wallet, PiggyBank, CalendarClock, BellRing, Gauge, Flame, Crown, TrendingUp, TrendingDown, CalendarDays, Wrench, Banknote, Percent, ReceiptText, Package, HandCoins, Zap, Droplet, ChartCandlestick } from '@lucide/vue'
 import { useBudget } from '../composables/useBudget.js'
 import { useSettings } from '../composables/useSettings.js'
 import { useRecurring } from '../composables/useRecurring.js'
 import { useExpenses } from '../composables/useExpenses.js'
+import { useAccounts } from '../composables/useAccounts.js'
+import { useIncome } from '../composables/useIncome.js'
+import { netWorthAt, netWorthSeries } from '../utils/netWorth.js'
+import { buildInsights } from '../utils/insights.js'
+import { sanitizeResetDay } from '../utils/budgetMath.js'
+import { useGoals } from '../composables/useGoals.js'
+import { useCategories } from '../composables/useCategories.js'
+import { accountForNewRecord } from '../utils/accountsView.js'
 import { useVehicles } from '../composables/useVehicles.js'
 import { useVehicleMaintenance } from '../composables/useVehicleMaintenance.js'
 import { useVehicleTags } from '../composables/useVehicleTags.js'
@@ -17,7 +25,7 @@ import { useLending } from '../composables/useLending.js'
 import { useInvestments } from '../composables/useInvestments.js'
 import { formatCurrency } from '../utils/currency.js'
 import { formatDate } from '../utils/date.js'
-import { dailySeries, weeklySeries, monthlySeries, formatDayKey } from '../utils/reporting.js'
+import { dailySeries, weeklySeries, monthlySeries, formatDayKey, localDayKey } from '../utils/reporting.js'
 import { Card, CardContent } from '@/components/ui/card/index.js'
 import { Button } from '@/components/ui/button/index.js'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs/index.js'
@@ -31,8 +39,13 @@ const router = useRouter()
 
 const { settings } = useSettings()
 const budget = useBudget()
-const { getPending, sortedByDueDate, stampConfirmed } = useRecurring()
+const { recurring: recurringTemplates, getPending, sortedByDueDate, stampConfirmed } = useRecurring()
 const { addExpense, expenses } = useExpenses()
+const { store: accountStore, balanceOf } = useAccounts()
+const accountBalanceFor = (id) => balanceOf(id)?.balance ?? null
+const { income: incomeRecords } = useIncome()
+const { goals, progress: goalProgressOf } = useGoals()
+const { categories: categoryList } = useCategories()
 const { vehicles } = useVehicles()
 const { logs: maintenanceLogs, dueSoon } = useVehicleMaintenance()
 const { findById: findTag } = useVehicleTags()
@@ -76,6 +89,32 @@ const donutSegments = computed(() => {
   return segments
 })
 
+// Net worth (utils/netWorth.js): a pure function of the raw records, so it can never disagree with the Net worth page.
+const netWorthInputs = computed(() => ({ accounts: accountStore, expenses, income: incomeRecords, loans, funds, assets }))
+const netWorth = computed(() => netWorthAt(localDayKey(new Date()), netWorthInputs.value))
+const netWorthChange = computed(() => {
+  const pts = netWorthSeries(netWorthInputs.value, { months: 2 }) // [end of last month, today] once last month was tracked
+  return pts.length < 2 ? null : netWorth.value.total - pts[0].total
+})
+
+// Insights (utils/insights.js): fixed, explainable rules over your own records; nothing is shown when there is little to say.
+const insights = computed(() =>
+  buildInsights(
+    {
+      expenses,
+      income: incomeRecords,
+      resetDay: sanitizeResetDay(settings.cycleResetDay),
+      overallBudget: settings.overallBudget,
+      categoryNames: Object.fromEntries(categoryList.map((c) => [c.id, c.name])),
+      recurring: recurringTemplates,
+      bills: bills,
+      goals: goals.map((g) => ({ name: g.name, status: goalProgressOf(g, (id) => accountBalanceFor(id)).status })),
+    },
+    { format: (n) => formatCurrency(n, settings.currencySymbol), limit: 4 }
+  )
+)
+const INSIGHT_LABEL = { over: 'Needs attention', warn: 'Worth a look', info: 'For your information', good: 'Going well' }
+
 const hasAnyData = computed(
   () =>
     budget.cycleExpenses.value.length > 0 ||
@@ -109,6 +148,7 @@ function handleAdd(template, amount) {
     note: `Recurring: ${template.name}`,
     source: 'recurring',
     recurringId: template.id,
+    accountId: accountForNewRecord(accountStore, { preferredId: template.accountId, defaultAccountId: settings.defaultAccountId }),
   })
   stampConfirmed(template.id, budget.cycle.value.start)
 }
@@ -162,6 +202,37 @@ function handleSnooze() {
         <CycleRail :cycle="budget.cycle.value" :is-over-budget="budget.overallStatus.value === 'over'" :due-ticks="upcomingDueDates" />
       </CardContent>
     </Card>
+
+    <!-- Net worth: shown once something is tracked (an account, asset, fund or loan). Pure function of the raw records. -->
+    <section v-if="netWorth.tracked" class="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="dashboard-net-worth">
+      <RouterLink to="/net-worth" class="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
+        <StatCard
+          :icon="Scale"
+          label="Net worth"
+          :value="formatCurrency(netWorth.total, settings.currencySymbol)"
+          :sub="netWorthChange === null ? 'See the breakdown' : (netWorthChange >= 0 ? 'Up ' : 'Down ') + formatCurrency(Math.abs(netWorthChange), settings.currencySymbol) + ' this month'"
+          :status="netWorthChange === null ? '' : netWorthChange >= 0 ? 'good' : 'over'"
+        />
+      </RouterLink>
+      <RouterLink v-if="accountStore.accounts.length" to="/accounts" class="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
+        <StatCard :icon="Landmark" label="In accounts" :value="formatCurrency(netWorth.accounts, settings.currencySymbol)" :sub="netWorth.accountList.length + (netWorth.accountList.length === 1 ? ' account' : ' accounts')" />
+      </RouterLink>
+    </section>
+
+    <section v-if="insights.length" class="flex flex-col gap-2" aria-label="Insights" data-testid="insights">
+      <h2 class="m-0 text-sm font-semibold text-muted-foreground">Insights</h2>
+      <RouterLink v-for="i in insights" :key="i.id" :to="i.to" class="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/50" data-testid="insight">
+        <Card class="transition-colors hover:bg-accent/40">
+          <CardContent class="flex flex-col gap-1 p-3">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-medium uppercase tracking-wide" :class="i.level === 'over' ? 'text-status-over' : i.level === 'warn' ? 'text-status-warn' : i.level === 'good' ? 'text-status-good' : 'text-muted-foreground'">{{ INSIGHT_LABEL[i.level] }}</span>
+            </div>
+            <div class="font-medium">{{ i.title }}</div>
+            <div class="text-sm text-muted-foreground">{{ i.detail }}</div>
+          </CardContent>
+        </Card>
+      </RouterLink>
+    </section>
 
     <Card v-if="!hasAnyData">
       <CardContent class="flex flex-col items-center gap-3 p-14 text-center">

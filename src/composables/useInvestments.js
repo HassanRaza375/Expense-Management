@@ -1,6 +1,7 @@
 import { reactive, watch } from 'vue'
 import { get, set, STORAGE_KEYS } from '../utils/storage.js'
 import { generateId } from '../utils/id.js'
+import { performance, portfolioPerformance } from '../utils/investments.js'
 
 const state = reactive(get(STORAGE_KEYS.INVESTMENTS, []))
 
@@ -27,25 +28,36 @@ export function useInvestments() {
     return [...fund.valueEntries].sort((a, b) => new Date(b.date) - new Date(a.date) || new Date(b.createdAt) - new Date(a.createdAt))
   }
 
+  // Gross money put in. (Withdrawals, if any, are in performance().withdrawn / netInvested.)
   function totalInvested(fund) {
     return fund.contributions.reduce((sum, c) => sum + c.amount, 0)
+  }
+
+  // All the figures for one fund (see utils/investments.js). Funds without withdrawals get exactly the numbers shown before.
+  function perf(fund) {
+    return performance(fund)
+  }
+
+  function sortedWithdrawals(fund) {
+    return [...(fund.withdrawals || [])].sort((a, b) => new Date(b.date) - new Date(a.date) || new Date(b.createdAt) - new Date(a.createdAt))
   }
 
   function latestValueEntry(fund) {
     return sortedValueEntries(fund)[0] || null
   }
 
+  // Latest value entry, less anything withdrawn after it (no entry: contributions less withdrawals).
   function currentValue(fund) {
-    return latestValueEntry(fund)?.value ?? totalInvested(fund)
+    return performance(fund).currentValue
   }
 
+  // Total gain = realized (from withdrawals) + unrealized. With no withdrawals this is value - invested, as before.
   function profitLoss(fund) {
-    return currentValue(fund) - totalInvested(fund)
+    return performance(fund).totalGain
   }
 
   function profitLossPercent(fund) {
-    const invested = totalInvested(fund)
-    return invested > 0 ? (profitLoss(fund) / invested) * 100 : 0
+    return performance(fund).returnPct ?? 0
   }
 
   // Orders two dated records chronologically. Dates are stored as date-only values, so
@@ -66,7 +78,11 @@ export function useInvestments() {
     const contributedBetween = fund.contributions
       .filter((c) => compareChronological(c, previous) > 0 && compareChronological(c, latest) <= 0)
       .reduce((sum, c) => sum + c.amount, 0)
-    return rawDelta - contributedBetween
+    // money withdrawn in between left the fund, so it is not a loss either
+    const withdrawnBetween = (fund.withdrawals || [])
+      .filter((w) => compareChronological(w, previous) > 0 && compareChronological(w, latest) <= 0)
+      .reduce((sum, w) => sum + w.amount, 0)
+    return rawDelta - contributedBetween + withdrawnBetween
   }
 
   function addFund({ name, provider, notes }) {
@@ -110,18 +126,50 @@ export function useInvestments() {
     }
   }
 
-  function addContribution(fundId, { date, amount, notes }) {
+  function addContribution(fundId, { date, amount, notes, accountId }) {
     const fund = findById(fundId)
     if (!fund) throw new Error('Fund not found')
     const amt = Number(amount)
     if (!(amt > 0)) throw new Error('Amount must be greater than 0')
-    fund.contributions.push({
+    const contribution = {
       id: generateId(),
       date: date || new Date().toISOString(),
       amount: amt,
       notes: notes || '',
       createdAt: new Date().toISOString(),
-    })
+    }
+    if (accountId) contribution.accountId = accountId // optional: the account the money left
+    fund.contributions.push(contribution)
+  }
+
+  // Money taken out of the fund. The first withdrawal creates the (optional) `withdrawals` list on the fund.
+  function addWithdrawal(fundId, { date, amount, notes, accountId }) {
+    const fund = findById(fundId)
+    if (!fund) throw new Error('Fund not found')
+    const amt = Number(amount)
+    if (!(amt > 0)) throw new Error('Amount must be greater than 0')
+    const value = performance(fund).currentValue
+    if (fund.valueEntries.length || fund.contributions.length) {
+      if (amt > value + 0.005) throw new Error('Cannot withdraw more than the fund is worth (' + value + ')')
+    }
+    const withdrawal = {
+      id: generateId(),
+      date: date || new Date().toISOString(),
+      amount: amt,
+      notes: notes || '',
+      createdAt: new Date().toISOString(),
+    }
+    if (accountId) withdrawal.accountId = accountId // optional: the account the money arrived in
+    if (!Array.isArray(fund.withdrawals)) fund.withdrawals = []
+    fund.withdrawals.push(withdrawal)
+    return withdrawal
+  }
+
+  function deleteWithdrawal(fundId, withdrawalId) {
+    const fund = findById(fundId)
+    if (!fund || !Array.isArray(fund.withdrawals)) return
+    const idx = fund.withdrawals.findIndex((w) => w.id === withdrawalId)
+    if (idx !== -1) fund.withdrawals.splice(idx, 1)
   }
 
   function deleteContribution(fundId, contributionId) {
@@ -178,15 +226,25 @@ export function useInvestments() {
     return state.reduce((sum, f) => sum + currentValue(f), 0)
   }
 
+  // realized + unrealized across all funds (without withdrawals: value - invested, as before)
   function portfolioProfitLoss() {
-    return portfolioValue() - portfolioInvested()
+    return portfolioPerformance(state).totalGain
+  }
+
+  function portfolioPerf() {
+    return portfolioPerformance(state)
   }
 
   return {
     funds: state,
     findById,
     sortedContributions,
+    sortedWithdrawals,
     sortedValueEntries,
+    perf,
+    portfolioPerf,
+    addWithdrawal,
+    deleteWithdrawal,
     totalInvested,
     latestValueEntry,
     currentValue,

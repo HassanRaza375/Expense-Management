@@ -7,8 +7,8 @@ import { transactionsToCsv, localDayKey } from './reporting.js'
  * `transactionsToCsv` in utils/reporting.js.
  * Returns the number of rows exported.
  */
-export function downloadTransactionsCsv(list, { categoryNames = null, now = new Date(), filenamePrefix = 'hisaab-expenses' } = {}) {
-  const csv = transactionsToCsv(list, { categoryNames })
+export function downloadTransactionsCsv(list, { categoryNames = null, accountNames = null, now = new Date(), filenamePrefix = 'hisaab-expenses' } = {}) {
+  const csv = transactionsToCsv(list, { categoryNames, accountNames })
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }) // BOM so Excel reads the rupee sign and accents
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

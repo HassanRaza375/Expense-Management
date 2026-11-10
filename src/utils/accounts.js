@@ -7,6 +7,10 @@
 //                            + refunds        assigned to the account
 //                            - expenses       assigned to the account
 //                            + transfers in   - transfers out
+//                            + lending: money lent and repayments received are movements too (lent = out, repayment
+//                              received = in; borrowed = in, repayment made = out). NEVER spending or income.
+//                            + investments: a contribution to a fund leaves the account, a withdrawal arrives (also never
+//                              spending or income).
 //                            + corrections    (reconciliation adjustments)
 //   counting only records dated from the account's opening DAY (inclusive: the opening balance is the balance at the
 //   START of that day) up to `asOf` (inclusive, default today).
@@ -33,6 +37,51 @@ const createdMs = (r) => {
   return Number.isNaN(ms) ? 0 : ms
 }
 
+/**
+ * Money movements caused by loans for ONE account: [{ type, effectC, record }].
+ *  - a loan you LENT leaves the account when it was made ('loan-out'); each repayment received comes back ('repayment-in')
+ *  - a loan you BORROWED arrives in the account ('loan-in'); each repayment you make leaves it ('repayment-out')
+ * A loan or repayment counts for the account named by ITS OWN accountId, so a loan paid from one account can be repaid
+ * into another. `record` carries the date used for the day; repayment records also carry loanId and personName.
+ */
+function lendingMovements(loans, accountId) {
+  const out = []
+  for (const loan of Array.isArray(loans) ? loans : []) {
+    const lent = loan?.direction !== 'borrowed' // legacy loans have no direction: they were all "lent"
+    if (loan?.accountId === accountId) out.push({ type: lent ? 'loan-out' : 'loan-in', effectC: lent ? -amountC(loan) : amountC(loan), record: loan })
+    for (const r of Array.isArray(loan?.repayments) ? loan.repayments : []) {
+      if (r?.accountId !== accountId) continue
+      out.push({
+        type: lent ? 'repayment-in' : 'repayment-out',
+        effectC: lent ? amountC(r) : -amountC(r),
+        record: { ...r, loanId: loan.id, personName: loan.personName ?? loan.borrowerName ?? '' },
+      })
+    }
+  }
+  return out
+}
+
+/**
+ * Money movements caused by investment funds for ONE account (Phase 4): a contribution leaves the account
+ * ('investment-out'), a withdrawal arrives ('investment-in'). Never spending or income. A record counts for the account
+ * named by its own accountId; records without one are not tracked in any balance.
+ */
+function investmentMovements(funds, accountId) {
+  const out = []
+  for (const fund of Array.isArray(funds) ? funds : []) {
+    for (const c of Array.isArray(fund?.contributions) ? fund.contributions : []) {
+      if (c?.accountId === accountId) out.push({ type: 'investment-out', effectC: -amountC(c), record: { ...c, fundId: fund.id, fundName: fund.name } })
+    }
+    for (const w of Array.isArray(fund?.withdrawals) ? fund.withdrawals : []) {
+      if (w?.accountId === accountId) out.push({ type: 'investment-in', effectC: amountC(w), record: { ...w, fundId: fund.id, fundName: fund.name } })
+    }
+  }
+  return out
+}
+
+// Same day AND same creation time: a loan / contribution is listed before its repayment / withdrawal (never the reverse).
+const tieRank = (type) => (type === 'loan-out' || type === 'loan-in' || type === 'investment-out' ? 0 : type === 'repayment-in' || type === 'repayment-out' || type === 'investment-in' ? 2 : 1)
+
 function asOfKey(asOf, now) {
   if (asOf === undefined || asOf === null || asOf === '') {
     const key = localDayKey(now)
@@ -47,7 +96,7 @@ function asOfKey(asOf, now) {
 
 /**
  * Everything about one account's balance.
- * data = { expenses, income, transfers, adjustments } (any may be missing).
+ * data = { expenses, income, transfers, adjustments, loans, funds } (any may be missing).
  * Returns { accountId, balance, opening, income, refunds, expenses, transfersIn, transfersOut, corrections, asOf,
  *           counted, olderThanOpening, scheduled, unreadable } (money in currency units).
  */
@@ -56,7 +105,7 @@ export function accountBalance(account, data = {}, { asOf, now = new Date() } = 
   const through = asOfKey(asOf, now)
   const open = account.openingDate
   const id = account.id
-  const sum = { income: 0, refunds: 0, expenses: 0, transfersIn: 0, transfersOut: 0, corrections: 0 }
+  const sum = { income: 0, refunds: 0, expenses: 0, transfersIn: 0, transfersOut: 0, corrections: 0, lendingIn: 0, lendingOut: 0, investIn: 0, investOut: 0 }
   const n = { counted: 0, olderThanOpening: 0, scheduled: 0, unreadable: 0 }
 
   // Classifies a record's day relative to this account; returns true when it should be counted.
@@ -99,9 +148,19 @@ export function accountBalance(account, data = {}, { asOf, now = new Date() } = 
     if (a?.accountId !== id || !counts(a)) continue
     sum.corrections += amountC(a) // signed
   }
+  for (const m of lendingMovements(data.loans, id)) {
+    if (!counts(m.record)) continue
+    if (m.effectC > 0) sum.lendingIn += m.effectC
+    else sum.lendingOut += -m.effectC
+  }
+  for (const m of investmentMovements(data.funds, id)) {
+    if (!counts(m.record)) continue
+    if (m.effectC > 0) sum.investIn += m.effectC
+    else sum.investOut += -m.effectC
+  }
 
   const openingC = toCents(account.openingBalance)
-  const balanceC = openingC + sum.income + sum.refunds - sum.expenses + sum.transfersIn - sum.transfersOut + sum.corrections
+  const balanceC = openingC + sum.income + sum.refunds - sum.expenses + sum.transfersIn - sum.transfersOut + sum.corrections + sum.lendingIn - sum.lendingOut + sum.investIn - sum.investOut
   return {
     accountId: id,
     balance: fromCents(balanceC),
@@ -112,6 +171,10 @@ export function accountBalance(account, data = {}, { asOf, now = new Date() } = 
     transfersIn: fromCents(sum.transfersIn),
     transfersOut: fromCents(sum.transfersOut),
     corrections: fromCents(sum.corrections),
+    lendingIn: fromCents(sum.lendingIn),
+    lendingOut: fromCents(sum.lendingOut),
+    investmentIn: fromCents(sum.investIn),
+    investmentOut: fromCents(sum.investOut),
     asOf: through,
     ...n,
   }
@@ -149,7 +212,8 @@ export function accountsOverview(store, data = {}, opts = {}) {
 /**
  * Chronological ledger rows for one account: the opening row, then every counted record, each with the signed effect
  * on the balance and the running balance. Rows: { id, type, dayKey, date, amount, running, scheduled, note, record }
- * where type is 'opening' | 'expense' | 'refund' | 'income' | 'transfer-in' | 'transfer-out' | 'correction'.
+ * where type is 'opening' | 'expense' | 'refund' | 'income' | 'transfer-in' | 'transfer-out' | 'correction' |
+ * 'loan-out' | 'loan-in' | 'repayment-in' | 'repayment-out' | 'investment-out' | 'investment-in'.
  * With includeScheduled, future-dated records are appended (flagged `scheduled`, running balance continues).
  * The last non-scheduled row's `running` always equals accountBalance(...).balance.
  */
@@ -181,7 +245,9 @@ export function accountLedger(account, data = {}, { asOf, now = new Date(), incl
   for (const a of data.adjustments || []) {
     if (a?.accountId === id) add(a, 'correction', amountC(a))
   }
-  items.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : createdMs(a.record) - createdMs(b.record) || String(a.record?.id).localeCompare(String(b.record?.id))))
+  for (const m of lendingMovements(data.loans, id)) add(m.record, m.type, m.effectC)
+  for (const m of investmentMovements(data.funds, id)) add(m.record, m.type, m.effectC)
+  items.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : createdMs(a.record) - createdMs(b.record) || tieRank(a.type) - tieRank(b.type) || String(a.record?.id).localeCompare(String(b.record?.id))))
 
   let running = toCents(account.openingBalance)
   const rows = [{ id: `opening-${id}`, type: 'opening', dayKey: open, date: null, amount: fromCents(running), running: fromCents(running), scheduled: false, note: 'Opening balance', record: null }]

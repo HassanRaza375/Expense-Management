@@ -6,6 +6,10 @@ import { toInputDate } from '../utils/date.js'
 import { localNoonISO, isDayKey } from '../utils/reporting.js'
 import { formatCurrency } from '../utils/currency.js'
 import { useSettings } from '../composables/useSettings.js'
+import { useExpenses } from '../composables/useExpenses.js'
+import { useAccounts } from '../composables/useAccounts.js'
+import { initialAccountId } from '../utils/accountsView.js'
+import AccountPicker from './AccountPicker.vue'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog/index.js'
 import { Button } from '@/components/ui/button/index.js'
 import { Input } from '@/components/ui/input/index.js'
@@ -21,7 +25,9 @@ const emit = defineEmits(['close', 'paid'])
 
 const { markPaid } = useBills()
 const { sorted, findById } = useCategories()
-const { settings } = useSettings()
+const { settings, setLastAccountId } = useSettings()
+const { findById: findExpense } = useExpenses()
+const { store: accountStore } = useAccounts()
 
 const form = reactive({
   paidDate: toInputDate(new Date()),
@@ -29,6 +35,7 @@ const form = reactive({
   paymentMethod: 'cash',
   transactionReference: '',
   categoryId: '',
+  accountId: '', // the account the bill was paid from; '' = none
 })
 const error = ref('')
 
@@ -41,6 +48,11 @@ watch(
     form.paidBy = settings.profileName || ''
     form.paymentMethod = 'cash'
     form.transactionReference = ''
+    // Paying again after the payment was edited: start from the account the existing payment already uses.
+    const existing = props.bill?.linkedExpenseId ? findExpense(props.bill.linkedExpenseId) : null
+    form.accountId = existing
+      ? initialAccountId(accountStore, { mode: 'edit', current: existing.accountId })
+      : initialAccountId(accountStore, { mode: 'create', lastAccountId: settings.lastAccountId, defaultAccountId: settings.defaultAccountId })
     const billsCategory = sorted().find((c) => c.name.toLowerCase() === 'bills')
     form.categoryId = billsCategory?.id || sorted()[0]?.id || ''
   },
@@ -54,13 +66,19 @@ function submit() {
     return
   }
   try {
-    markPaid(props.bill.id, {
+    const payload = {
       paidDate: localNoonISO(form.paidDate),
       paidBy: form.paidBy,
       paymentMethod: form.paymentMethod,
       transactionReference: form.transactionReference,
       categoryId: form.categoryId,
-    })
+    }
+    // Only sent when the picker was shown (an account exists); otherwise the payment is recorded exactly as before.
+    if (accountStore.accounts.length) {
+      payload.accountId = form.accountId
+      setLastAccountId(form.accountId)
+    }
+    markPaid(props.bill.id, payload)
     emit('paid')
   } catch (e) {
     error.value = e.message
@@ -95,6 +113,7 @@ function submit() {
             </SelectContent>
           </Select>
         </div>
+        <AccountPicker v-model="form.accountId" />
         <div class="flex flex-col gap-1.5">
           <Label>Transaction reference (optional)</Label>
           <Input v-model="form.transactionReference" type="text" />

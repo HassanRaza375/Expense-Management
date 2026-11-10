@@ -3,8 +3,11 @@ import { get, set, STORAGE_KEYS } from '../utils/storage.js'
 import { generateId } from '../utils/id.js'
 import { localNoonISO, isDayKey, localDayKey } from '../utils/reporting.js'
 import { accountBalance, accountsOverview, accountLedger, unassignedSince, reconcileDifference, validateAccount, validateTransfer, validateAdjustment } from '../utils/accounts.js'
+import { accountCards, unassignedSummary, ledgerView, reconcileView } from '../utils/accountsView.js'
 import { useExpenses } from './useExpenses.js'
 import { useIncome } from './useIncome.js'
+import { useLending } from './useLending.js'
+import { useInvestments } from './useInvestments.js'
 import { useSettings } from './useSettings.js'
 
 // One storage key holds accounts, transfers and corrections TOGETHER, so a backup/restore/snapshot can never leave
@@ -42,9 +45,13 @@ function fail(errors) {
 export function useAccounts() {
   const { expenses } = useExpenses()
   const { income } = useIncome()
+  const { loans } = useLending()
+  const { funds } = useInvestments()
   const { settings } = useSettings()
 
-  const data = () => ({ expenses, income, transfers: state.transfers, adjustments: state.adjustments })
+  // Every record kind that can move money in an account (the pure maths in utils/accounts.js decides what each one does).
+  const records = () => ({ expenses, income, loans, funds })
+  const data = () => ({ ...records(), transfers: state.transfers, adjustments: state.adjustments })
 
   function findAccount(id) {
     return state.accounts.find((a) => a.id === id)
@@ -96,13 +103,15 @@ export function useAccounts() {
     if (account) account.archived = false
   }
 
-  // How many records point at this account (expenses/refunds, income, transfers, corrections).
+  // How many records point at this account (expenses/refunds, income, transfers, corrections, loans and repayments).
   function referenceCount(id) {
     return (
       expenses.filter((e) => e.accountId === id).length +
       income.filter((i) => i.accountId === id).length +
       state.transfers.filter((t) => t.fromAccountId === id || t.toAccountId === id).length +
-      state.adjustments.filter((a) => a.accountId === id).length
+      state.adjustments.filter((a) => a.accountId === id).length +
+      loans.reduce((n, l) => n + (l.accountId === id ? 1 : 0) + (Array.isArray(l.repayments) ? l.repayments.filter((r) => r.accountId === id).length : 0), 0) +
+      funds.reduce((n, f) => n + (Array.isArray(f.contributions) ? f.contributions.filter((c) => c.accountId === id).length : 0) + (Array.isArray(f.withdrawals) ? f.withdrawals.filter((w) => w.accountId === id).length : 0), 0)
     )
   }
 
@@ -191,18 +200,34 @@ export function useAccounts() {
     return account ? accountBalance(account, data(), opts) : null
   }
   function overview(opts) {
-    return accountsOverview(state, { expenses, income }, opts)
+    return accountsOverview(state, records(), opts)
   }
   function ledger(id, opts) {
     const account = findAccount(id)
     return account ? accountLedger(account, data(), opts) : []
   }
   function unassigned(sinceKey) {
-    return unassignedSince(state, { expenses, income }, sinceKey)
+    return unassignedSince(state, records(), sinceKey)
   }
   function reconcilePreview(id, { actual, asOf } = {}) {
     const account = findAccount(id)
     return account ? reconcileDifference(account, data(), { actual, asOf }) : null
+  }
+
+  // ---- view models for the Accounts screens (utils/accountsView.js; nothing here does money maths) ----
+  function cards(opts) {
+    return accountCards(state, records(), opts)
+  }
+  function unassignedLine(sinceKey) {
+    return unassignedSummary(state, records(), sinceKey)
+  }
+  function ledgerFor(id, opts) {
+    const account = findAccount(id)
+    return account ? ledgerView(account, state, records(), opts) : null
+  }
+  function reconcileFor(id, opts) {
+    const account = findAccount(id)
+    return account ? reconcileView(account, state, records(), opts) : null
   }
 
   // Reconcile: compare the real balance with the computed one; if they differ, add a visible correction for the
@@ -242,5 +267,10 @@ export function useAccounts() {
     unassigned,
     reconcilePreview,
     reconcile,
+    records, // every record kind that can move money in an account; screens use this instead of assembling their own list
+    cards,
+    unassignedLine,
+    ledgerFor,
+    reconcileFor,
   }
 }

@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, ChartCandlestick, Plus, Pencil, Trash2 } from '@lucide/vue'
 import { useInvestments } from '../composables/useInvestments.js'
 import { useSettings } from '../composables/useSettings.js'
+import { useAccounts } from '../composables/useAccounts.js'
+import { fundSeries } from '../utils/investments.js'
 import { formatCurrency } from '../utils/currency.js'
 import { formatDate } from '../utils/date.js'
 import { Card, CardContent } from '@/components/ui/card/index.js'
@@ -11,7 +13,8 @@ import { Button } from '@/components/ui/button/index.js'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs/index.js'
 import { toast } from '@/components/ui/sonner/index.js'
 import StatCard from '../components/StatCard.vue'
-import TrendChart from '../components/TrendChart.vue'
+import FundChart from '../components/FundChart.vue'
+import WithdrawalFormModal from '../components/WithdrawalFormModal.vue'
 import FundFormModal from '../components/FundFormModal.vue'
 import ValueEntryFormModal from '../components/ValueEntryFormModal.vue'
 import ContributionFormModal from '../components/ContributionFormModal.vue'
@@ -35,15 +38,24 @@ const {
   deleteValueEntry,
   addContribution,
   deleteContribution,
+  perf,
+  sortedWithdrawals,
+  addWithdrawal,
+  deleteWithdrawal,
 } = useInvestments()
+const { findAccount } = useAccounts()
+const accountLabel = (r) => (r?.accountId ? findAccount(r.accountId)?.name || '' : '')
 
 const fund = computed(() => findById(route.params.id))
-const trendPoints = computed(() => (fund.value ? valueHistory(fund.value).map((e) => ({ date: e.date, total: e.value })) : []))
+const series = computed(() => (fund.value ? fundSeries(fund.value) : []))
+const p = computed(() => (fund.value ? perf(fund.value) : null))
+const hasWithdrawals = computed(() => !!fund.value?.withdrawals?.length)
 
 const editModalOpen = ref(false)
 const valueModalOpen = ref(false)
 const editingValueEntry = ref(null)
 const contributionModalOpen = ref(false)
+const withdrawalModalOpen = ref(false)
 const error = ref('')
 
 function openEditFund() {
@@ -107,6 +119,26 @@ function saveContribution(payload) {
   }
 }
 
+function openAddWithdrawal() {
+  error.value = ''
+  withdrawalModalOpen.value = true
+}
+
+function saveWithdrawal(payload) {
+  error.value = ''
+  try {
+    addWithdrawal(fund.value.id, payload)
+    withdrawalModalOpen.value = false
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
+function handleDeleteWithdrawal(id) {
+  deleteWithdrawal(fund.value.id, id)
+  toast('Withdrawal removed')
+}
+
 function handleDeleteContribution(contributionId) {
   deleteContribution(fund.value.id, contributionId)
   toast('Contribution removed')
@@ -151,12 +183,19 @@ function handleDeleteContribution(contributionId) {
       />
     </section>
 
+    <section v-if="hasWithdrawals" class="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="fund-realized">
+      <StatCard label="Withdrawn" :value="formatCurrency(p.withdrawn, settings.currencySymbol)" :sub="'Net put in ' + formatCurrency(p.netInvested, settings.currencySymbol)" />
+      <StatCard label="Realized gain" :value="formatCurrency(p.realizedGain, settings.currencySymbol)" sub="On money taken out" :status="p.realizedGain >= 0 ? 'good' : 'over'" />
+      <StatCard label="Unrealized gain" :value="formatCurrency(p.unrealizedGain, settings.currencySymbol)" sub="On what is still invested" :status="p.unrealizedGain >= 0 ? 'good' : 'over'" />
+      <StatCard label="Cost of what is left" :value="formatCurrency(p.costBasis, settings.currencySymbol)" sub="Your original money still in the fund" />
+    </section>
+
     <p v-if="fund.notes" class="m-0 text-sm text-muted-foreground">{{ fund.notes }}</p>
 
-    <Card v-if="trendPoints.length > 1">
+    <Card v-if="series.length > 1">
       <CardContent class="p-4">
-        <h3 class="mb-3 text-sm font-semibold">Value over time</h3>
-        <TrendChart :points="trendPoints" />
+        <h3 class="mb-3 text-sm font-semibold">Value vs money put in</h3>
+        <FundChart :points="series" />
       </CardContent>
     </Card>
 
@@ -164,6 +203,7 @@ function handleDeleteContribution(contributionId) {
       <TabsList>
         <TabsTrigger value="values">Value updates</TabsTrigger>
         <TabsTrigger value="contributions">Contributions</TabsTrigger>
+        <TabsTrigger value="withdrawals">Withdrawals</TabsTrigger>
       </TabsList>
 
       <TabsContent value="values" class="flex flex-col gap-4">
@@ -209,10 +249,36 @@ function handleDeleteContribution(contributionId) {
               <div class="amount font-medium">{{ formatCurrency(c.amount, settings.currencySymbol) }}</div>
               <div class="text-xs text-muted-foreground">
                 {{ formatDate(c.date, 'short') }}
+                <span v-if="accountLabel(c)"> · from {{ accountLabel(c) }}</span>
                 <span v-if="c.notes"> · {{ c.notes }}</span>
               </div>
             </div>
             <Button variant="ghost" size="icon" title="Delete" class="ml-auto" @click="handleDeleteContribution(c.id)"><Trash2 class="h-4 w-4" /></Button>
+          </div>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="withdrawals" class="flex flex-col gap-4">
+        <div class="flex items-center justify-between">
+          <h3 class="text-base font-semibold">Withdrawals</h3>
+          <Button size="sm" :disabled="currentValue(fund) <= 0" data-testid="add-withdrawal" @click="openAddWithdrawal"><Plus class="h-4 w-4" /> Add withdrawal</Button>
+        </div>
+
+        <Card v-if="!hasWithdrawals">
+          <CardContent class="p-8 text-center text-muted-foreground"> No withdrawals. When you take money out, record it here so gains are split into realized and unrealized. </CardContent>
+        </Card>
+
+        <Card v-else class="overflow-hidden py-0">
+          <div v-for="w in sortedWithdrawals(fund)" :key="w.id" class="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3 last:border-b-0" data-testid="withdrawal-row">
+            <div class="min-w-0 flex-1">
+              <div class="amount font-medium">{{ formatCurrency(w.amount, settings.currencySymbol) }}</div>
+              <div class="text-xs text-muted-foreground">
+                {{ formatDate(w.date, 'short') }}
+                <span v-if="accountLabel(w)"> · into {{ accountLabel(w) }}</span>
+                <span v-if="w.notes"> · {{ w.notes }}</span>
+              </div>
+            </div>
+            <Button variant="ghost" size="icon" title="Delete" class="ml-auto" @click="handleDeleteWithdrawal(w.id)"><Trash2 class="h-4 w-4" /></Button>
           </div>
         </Card>
       </TabsContent>
@@ -221,6 +287,7 @@ function handleDeleteContribution(contributionId) {
     <FundFormModal :open="editModalOpen" :fund="fund" @close="editModalOpen = false" @save="saveFund" />
     <ValueEntryFormModal :open="valueModalOpen" :entry="editingValueEntry" @close="valueModalOpen = false" @save="saveValueEntry" />
     <ContributionFormModal :open="contributionModalOpen" @close="contributionModalOpen = false" @save="saveContribution" />
+    <WithdrawalFormModal :open="withdrawalModalOpen" :max-amount="currentValue(fund)" @close="withdrawalModalOpen = false" @save="saveWithdrawal" />
     <p v-if="error" class="m-0 text-sm text-destructive">{{ error }}</p>
   </div>
 </template>

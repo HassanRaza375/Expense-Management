@@ -243,9 +243,45 @@ test('Dashboard/Budget numbers are IDENTICAL before and after creating accounts,
 
 test('no spending/reporting module knows about accounts', () => {
   const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
+  // None of them may import the account maths or the accounts store.
   for (const f of ['../src/utils/reporting.js', '../src/utils/budgetMath.js', '../src/composables/useBudget.js', '../src/utils/csvExport.js']) {
-    assert.doesNotMatch(read(f), /accountId|accounts\.js|useAccounts|STORAGE_KEYS\.ACCOUNTS/, f)
+    assert.doesNotMatch(read(f), /accounts\.js|accountsView|useAccounts|STORAGE_KEYS\.ACCOUNTS/, f)
   }
+  // The budget does not know about accounts at all.
+  for (const f of ['../src/utils/budgetMath.js', '../src/composables/useBudget.js']) assert.doesNotMatch(read(f), /accountId|accountNames/, f)
+  // reporting.js and csvExport.js may mention an account ONLY for the Account filter and the CSV column (design K.5):
+  // the summing functions never read it (the behavioural test below proves the figures do not move).
+  const reporting = read('../src/utils/reporting.js')
+  for (const fn of ['summarize', 'categoryBreakdown', 'compareMonths', 'groupByDay', 'sortTransactions']) {
+    const start = reporting.indexOf(`export function ${fn}(`)
+    assert.ok(start >= 0, fn)
+    const end = reporting.indexOf('\nexport ', start + 10)
+    assert.doesNotMatch(reporting.slice(start, end === -1 ? undefined : end), /accountId/, `${fn} must not read accountId`)
+  }
+})
+
+test('spending figures do not depend on accountId: summaries, breakdowns, month comparison and budget are identical with and without accounts', async () => {
+  const { summarize, categoryBreakdown, compareMonths, groupByDay, sortTransactions } = await import('../src/utils/reporting.js')
+  const { computeBudget } = await import('../src/utils/budgetMath.js')
+  const plain = []
+  const tagged = []
+  for (let i = 0; i < 60; i++) {
+    const day = 1 + (i % 28)
+    const rec = { id: `p${i}`, date: noon(2026, 10 + (i % 2), day), amount: 10 + ((i * 37) % 500) + (i % 3) * 0.25, categoryId: ['food', 'fuel', 'fun'][i % 3], note: `n${i}`, ...(i % 7 === 0 ? { kind: 'refund' } : {}), createdAt: new Date(2026, 0, 1, 0, 0, i).toISOString() }
+    plain.push(rec)
+    tagged.push({ ...rec, ...(i % 4 === 0 ? {} : { accountId: i % 2 ? 'bank' : 'gone-account' }) })
+  }
+  const now = new Date(2026, 10, 20, 12)
+  assert.deepEqual(summarize(tagged, { now }), summarize(plain, { now }))
+  assert.deepEqual(categoryBreakdown(tagged), categoryBreakdown(plain))
+  assert.deepEqual(compareMonths(tagged, { now }), compareMonths(plain, { now }))
+  assert.deepEqual(groupByDay(tagged).map((g) => [g.dayKey, g.net]), groupByDay(plain).map((g) => [g.dayKey, g.net]))
+  assert.deepEqual(sortTransactions(tagged, 'highest').map((t) => t.id), sortTransactions(plain, 'highest').map((t) => t.id))
+  const budgetArgs = { overallBudget: 30000, categoryBudgets: { food: 5000 }, categories: [], resetDay: 6, income: [], now }
+  // The budget result echoes back some of the records themselves (e.g. the biggest expense), so compare every number
+  // and label with the accountId field itself removed: the FIGURES must be identical.
+  const figures = (r) => JSON.parse(JSON.stringify(r, (k, v) => (k === 'accountId' ? undefined : v)))
+  assert.deepEqual(figures(computeBudget({ ...budgetArgs, expenses: tagged })), figures(computeBudget({ ...budgetArgs, expenses: plain })))
 })
 
 // ---- backup / restore / snapshots ---------------------------------------------------------------------------------
@@ -259,20 +295,20 @@ const seedWorld = () => {
   return { a, b }
 }
 
-test('accounts are a backup module, counted, and the backup says data version 2 once the app is stamped', async () => {
+test('accounts are a backup module, counted, and the backup says the current data version once the app is stamped', async () => {
   assert.ok(BACKUP_MODULES.some((m) => m.key === STORAGE_KEYS.ACCOUNTS && m.shape === 'accounts'))
-  assert.equal(CURRENT_SCHEMA_VERSION, 2)
-  localStorage.setItem('hisaab:meta', JSON.stringify({ version: 2 }))
+  assert.equal(CURRENT_SCHEMA_VERSION, 3)
+  localStorage.setItem('hisaab:meta', JSON.stringify({ version: CURRENT_SCHEMA_VERSION }))
   seedWorld()
   await nextTick()
   const backup = await buildBackup()
-  assert.equal(backup.schemaVersion, 2)
+  assert.equal(backup.schemaVersion, CURRENT_SCHEMA_VERSION)
   assert.equal(backup.counts.accounts, 2)
   assert.deepEqual(Object.keys(backup.data.accounts).sort(), ['accounts', 'adjustments', 'transfers'])
 })
 
 test('round trip: export -> wipe -> import restores the accounts store and every balance exactly', async () => {
-  localStorage.setItem('hisaab:meta', JSON.stringify({ version: 2 }))
+  localStorage.setItem('hisaab:meta', JSON.stringify({ version: CURRENT_SCHEMA_VERSION }))
   const { a, b } = seedWorld()
   await nextTick()
   const before = { a: acc.balanceOf(a.id, { now: NOW }), b: acc.balanceOf(b.id, { now: NOW }) }
@@ -294,13 +330,14 @@ test('round trip: export -> wipe -> import restores the accounts store and every
 
 const minimal = (extra = {}) => ({ kind: 'hisaab-full-backup', formatVersion: 1, data: { expenses: [{ id: 'e', date: '2026-11-01T07:00:00.000Z', amount: 5, categoryId: 'x' }] }, ...extra })
 
-test('backup compatibility matrix: v1 and v2 import, a newer data version is refused', () => {
+test('backup compatibility matrix: v1, v2 and v3 import, a newer data version is refused', () => {
   assert.equal(parseBackup(JSON.stringify(minimal({ schemaVersion: 1 }))).ok, true)
   assert.equal(parseBackup(JSON.stringify(minimal({ schemaVersion: 2 }))).ok, true)
+  assert.equal(parseBackup(JSON.stringify(minimal({ schemaVersion: 3 }))).ok, true)
   assert.equal(parseBackup(JSON.stringify(minimal())).ok, true, 'no schemaVersion at all (oldest files) is treated as 1')
-  const v3 = parseBackup(JSON.stringify(minimal({ schemaVersion: 3 })))
-  assert.equal(v3.ok, false)
-  assert.match(v3.errors.join(), /newer data version \(3\)/)
+  const v4 = parseBackup(JSON.stringify(minimal({ schemaVersion: CURRENT_SCHEMA_VERSION + 1 })))
+  assert.equal(v4.ok, false)
+  assert.match(v4.errors.join(), new RegExp('newer data version \\(' + (CURRENT_SCHEMA_VERSION + 1) + '\\)'))
 })
 
 test('importing a FULL backup from before accounts existed clears the accounts store, and the preview says so', async () => {

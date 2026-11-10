@@ -126,7 +126,7 @@ function handleDeleteRepayment(repaymentId) {
     </Card>
 
     <LoanFormModal :open="editModalOpen" :loan="loan" @close="editModalOpen = false" @save="saveLoan" />
-    <RepaymentFormModal :open="repaymentModalOpen" :max-amount="remaining(loan)" @close="repaymentModalOpen = false" @save="saveRepayment" />
+    <RepaymentFormModal :open="repaymentModalOpen" :max-amount="remaining(loan)" :default-account-id="loan.accountId || ''" @close="repaymentModalOpen = false" @save="saveRepayment" />
     <p v-if="error" class="m-0 text-sm text-destructive">{{ error }}</p>
   </div>
 </template>

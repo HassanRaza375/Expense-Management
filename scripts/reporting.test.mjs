@@ -42,6 +42,7 @@ import {
   describeFilters,
   PERIOD_LABELS,
   transactionsToCsv,
+  ACCOUNT_NONE,
 } from '../src/utils/reporting.js'
 import { getCycle } from './legacy-cycle.mjs'
 
@@ -1013,7 +1014,7 @@ test('CSV: header, category NAME (not id), kind column, local day, always-positi
     refund(local(2026, 11, 3, 14), 300, { categoryId: 'cat-food', note: 'returned', source: 'manual' }),
   ]
   const csv = transactionsToCsv(list, { categoryNames: names })
-  assert.equal(csv, 'date,amount,kind,category,note,source\r\n2026-11-02,1200.50,expense,Food,lunch,manual\r\n2026-11-03,300.00,refund,Food,returned,manual\r\n')
+  assert.equal(csv, 'date,amount,kind,category,note,source,account\r\n2026-11-02,1200.50,expense,Food,lunch,manual,\r\n2026-11-03,300.00,refund,Food,returned,manual,\r\n')
   assert.ok(!csv.includes('cat-food'), 'ids never leak into the export')
 })
 
@@ -1039,11 +1040,11 @@ test('CSV: quoting, embedded quotes/commas/newlines, unicode, and spreadsheet fo
 test('CSV: deleted/unknown category, no category, empty list, missing fields', () => {
   const list = [tx(local(2026, 11, 2), 5, { categoryId: 'gone' }), tx(local(2026, 11, 2), 6, { categoryId: null }), { amount: 'abc', date: 'nope' }]
   const lines = transactionsToCsv(list, { categoryNames: { other: 'Other' } }).trimEnd().split('\r\n')
-  assert.equal(lines[1], '2026-11-02,5.00,expense,(deleted category),,')
-  assert.equal(lines[2], '2026-11-02,6.00,expense,,,')
-  assert.equal(lines[3], ',0.00,expense,,,')
-  assert.equal(transactionsToCsv([]), 'date,amount,kind,category,note,source\r\n')
-  assert.equal(transactionsToCsv(null), 'date,amount,kind,category,note,source\r\n')
+  assert.equal(lines[1], '2026-11-02,5.00,expense,(deleted category),,,')
+  assert.equal(lines[2], '2026-11-02,6.00,expense,,,,')
+  assert.equal(lines[3], ',0.00,expense,,,,')
+  assert.equal(transactionsToCsv([]), 'date,amount,kind,category,note,source,account\r\n')
+  assert.equal(transactionsToCsv(null), 'date,amount,kind,category,note,source,account\r\n')
 })
 
 test('CSV of a filtered list exports exactly that list, and its amounts add up to the on-screen net', () => {
@@ -1058,4 +1059,45 @@ test('CSV of a filtered list exports exactly that list, and its amounts add up t
     return s + (kind === 'refund' ? -1 : 1) * Math.round(Number(amount) * 100)
   }, 0)
   assert.equal(net, Math.round(summarize(list, { now }).net * 100))
+})
+
+// ---- Phase 2.4: account filter and the CSV account column ----------------------------------------------------------
+
+test('filterTransactions: account filter = all / one account / Unassigned (no id OR an id that is not a known account)', () => {
+  const list = [
+    tx(local(2026, 11, 2), 1, { id: 'a', accountId: 'bank' }),
+    tx(local(2026, 11, 2), 2, { id: 'b', accountId: 'cash' }),
+    tx(local(2026, 11, 2), 3, { id: 'c' }),
+    tx(local(2026, 11, 2), 4, { id: 'd', accountId: 'deleted' }),
+    tx(local(2026, 11, 2), 5, { id: 'e', accountId: '' }),
+  ]
+  const ids = (f) => filterTransactions(list, f).map((t) => t.id)
+  assert.deepEqual(ids({}), ['a', 'b', 'c', 'd', 'e'])
+  assert.deepEqual(ids({ accountId: 'all' }), ['a', 'b', 'c', 'd', 'e'])
+  assert.deepEqual(ids({ accountId: null }), ['a', 'b', 'c', 'd', 'e'])
+  assert.deepEqual(ids({ accountId: 'bank' }), ['a'])
+  assert.deepEqual(ids({ accountId: ACCOUNT_NONE, knownAccountIds: ['bank', 'cash'] }), ['c', 'd', 'e'], 'orphaned id counts as Unassigned')
+  assert.deepEqual(ids({ accountId: ACCOUNT_NONE }), ['c', 'e'], 'without the known list only a missing id is Unassigned')
+})
+
+test('filterTransactions: the account filter ANDs with period, category and search, and totals still come from the filtered list', () => {
+  const now = NOW(2026, 11, 15)
+  const list = [
+    tx(local(2026, 11, 3), 100, { categoryId: 'f', note: 'lunch', accountId: 'bank' }),
+    tx(local(2026, 11, 4), 50, { categoryId: 'f', note: 'lunch', accountId: 'cash' }),
+    tx(local(2026, 10, 4), 70, { categoryId: 'f', note: 'lunch', accountId: 'bank' }),
+    tx(local(2026, 11, 5), 30, { categoryId: 'g', note: 'bus', accountId: 'bank' }),
+  ]
+  const r = filterTransactions(list, { period: 'this-month', categoryId: 'f', query: 'lunch', accountId: 'bank', now })
+  assert.equal(r.length, 1)
+  assert.equal(summarize(r, { now }).net, 100)
+})
+
+test('CSV: account column carries the account NAME, blank when unassigned, (deleted account) when the id is gone', () => {
+  const list = [tx(local(2026, 11, 2), 5, { accountId: 'bank' }), tx(local(2026, 11, 2), 6), tx(local(2026, 11, 2), 7, { accountId: 'gone' })]
+  const lines = transactionsToCsv(list, { accountNames: { bank: 'Meezan, main' } }).trimEnd().split(/\r?\n/)
+  assert.ok(lines[1].endsWith(',"Meezan, main"'))
+  assert.ok(lines[2].endsWith(',,'))
+  assert.ok(lines[3].endsWith(',(deleted account)'))
+  assert.ok(!transactionsToCsv(list).includes('bank'), 'ids never leak into the export')
 })

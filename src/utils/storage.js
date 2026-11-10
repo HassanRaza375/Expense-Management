@@ -89,5 +89,6 @@ export const STORAGE_KEYS = {
   INVESTMENTS: 'investments',
   ACCOUNTS: 'accounts', // { accounts: [], transfers: [], adjustments: [] }  (Phase 2)
   VEHICLE_TAGS: 'vehicleTags',
+  GOALS: 'goals', // [ { id, name, targetAmount, ... } ]  (Phase 5)
   META: 'meta',
 }

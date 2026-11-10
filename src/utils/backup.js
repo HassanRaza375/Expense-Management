@@ -59,6 +59,18 @@ function checkFunds(items) {
     if (!Array.isArray(fund.contributions) || !Array.isArray(fund.valueEntries)) {
       issues.push(`fund ${i + 1} is missing its contributions or value entries list`)
     }
+    if (fund.withdrawals !== undefined && !Array.isArray(fund.withdrawals)) issues.push(`fund ${i + 1} has a withdrawals field that is not a list`)
+  })
+  return issues
+}
+
+// Goals (Phase 5). Problems are WARNINGS, like the other item checks.
+function checkGoals(items) {
+  const issues = []
+  items.forEach((goal, i) => {
+    if (!isPlainObject(goal)) return
+    if (!(Number(goal.targetAmount) > 0)) issues.push(`goal ${i + 1} has no valid target amount`)
+    if (goal.savings !== undefined && !Array.isArray(goal.savings)) issues.push(`goal ${i + 1} has a savings field that is not a list`)
   })
   return issues
 }
@@ -99,6 +111,7 @@ export const BACKUP_MODULES = [
   { key: STORAGE_KEYS.LENDING, label: 'Lending', shape: 'array' },
   { key: STORAGE_KEYS.ACCOUNTS, label: 'Accounts', shape: 'accounts', check: checkAccountsStore },
   { key: STORAGE_KEYS.INVESTMENTS, label: 'Investments', shape: 'array', check: checkFunds },
+  { key: STORAGE_KEYS.GOALS, label: 'Goals', shape: 'array', check: checkGoals, uniqueIds: true },
   { key: STORAGE_KEYS.VEHICLES, label: 'Vehicles', shape: 'array' },
   { key: STORAGE_KEYS.VEHICLE_LOGS, label: 'Maintenance logs', shape: 'array' },
   { key: STORAGE_KEYS.FUEL_LOGS, label: 'Fuel logs', shape: 'array' },

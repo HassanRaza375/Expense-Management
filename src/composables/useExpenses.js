@@ -113,6 +113,29 @@ export function useExpenses() {
     }
   }
 
+  // Bulk "Assign account" (Phase 2.4). `changes` come from assignmentPlan(): [{ id, from, to }]. '' = no account.
+  // Returns the changes it applied so the caller can offer Undo via undoAssignAccount().
+  function applyAccountChanges(changes) {
+    const applied = []
+    for (const c of changes || []) {
+      const e = findById(c.id)
+      if (!e) continue
+      if (c.to) e.accountId = c.to
+      else delete e.accountId
+      applied.push(c)
+    }
+    return applied
+  }
+
+  function undoAssignAccount(changes) {
+    for (const c of changes || []) {
+      const e = findById(c.id)
+      if (!e) continue
+      if (c.from) e.accountId = c.from
+      else delete e.accountId
+    }
+  }
+
   function reassignCategory(fromCategoryId, toCategoryId) {
     state.forEach((e) => {
       if (e.categoryId === fromCategoryId) e.categoryId = toCategoryId
@@ -142,6 +165,8 @@ export function useExpenses() {
   return {
     expenses: state,
     findById,
+    applyAccountChanges,
+    undoAssignAccount,
     addExpense,
     updateExpense,
     deleteExpense,

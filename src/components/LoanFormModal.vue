@@ -2,6 +2,10 @@
 import { reactive, computed, watch } from 'vue'
 import { toInputDate } from '../utils/date.js'
 import { resolveSavedDate } from '../utils/reporting.js'
+import { useSettings } from '../composables/useSettings.js'
+import { useAccounts } from '../composables/useAccounts.js'
+import { initialAccountId } from '../utils/accountsView.js'
+import AccountPicker from './AccountPicker.vue'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog/index.js'
 import { Button } from '@/components/ui/button/index.js'
 import { Input } from '@/components/ui/input/index.js'
@@ -19,11 +23,15 @@ const emit = defineEmits(['close', 'save'])
 const activeDirection = computed(() => props.loan?.direction || props.direction)
 const isBorrowed = computed(() => activeDirection.value === 'borrowed')
 
+const { settings, setLastAccountId } = useSettings()
+const { store: accountStore } = useAccounts()
+
 const form = reactive({
   personName: '',
   amount: '',
   date: toInputDate(new Date()),
   dueDate: '',
+  accountId: '', // the account the money left (lent) or arrived in (borrowed); '' = none
   notes: '',
 })
 
@@ -32,6 +40,7 @@ function resetForm() {
   form.amount = ''
   form.date = toInputDate(new Date())
   form.dueDate = ''
+  form.accountId = initialAccountId(accountStore, { mode: 'create', lastAccountId: settings.lastAccountId, defaultAccountId: settings.defaultAccountId })
   form.notes = ''
 }
 
@@ -45,6 +54,7 @@ watch(
       form.date = toInputDate(props.loan.date)
       form.dueDate = props.loan.dueDate ? toInputDate(props.loan.dueDate) : ''
       form.notes = props.loan.notes || ''
+      form.accountId = initialAccountId(accountStore, { mode: 'edit', current: props.loan.accountId })
     } else {
       resetForm()
     }
@@ -64,14 +74,20 @@ function submit() {
     error.message = 'Amount must be greater than 0'
     return
   }
-  emit('save', {
+  const payload = {
     direction: activeDirection.value,
     personName: form.personName,
     amount: form.amount,
     date: resolveSavedDate(props.loan?.date, form.date), // unchanged day keeps the stored value; a new/changed day is saved as local noon
     dueDate: form.dueDate ? new Date(form.dueDate).toISOString() : '',
     notes: form.notes,
-  })
+  }
+  // Only sent when the picker was shown (an account exists); otherwise the loan is left exactly as it was.
+  if (accountStore.accounts.length) {
+    payload.accountId = form.accountId
+    if (!props.loan) setLastAccountId(form.accountId)
+  }
+  emit('save', payload)
 }
 </script>
 
@@ -102,6 +118,7 @@ function submit() {
           <Label>Due date (optional)</Label>
           <Input v-model="form.dueDate" type="date" />
         </div>
+        <AccountPicker v-model="form.accountId" />
         <div class="flex flex-col gap-1.5">
           <Label>Notes (optional)</Label>
           <Textarea v-model="form.notes" rows="2" />

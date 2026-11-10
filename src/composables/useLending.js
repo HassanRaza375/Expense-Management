@@ -48,7 +48,7 @@ export function useLending() {
     return 'outstanding'
   }
 
-  function addLoan({ direction: dir, personName: name, amount, date, dueDate, notes }) {
+  function addLoan({ direction: dir, personName: name, amount, date, dueDate, notes, accountId }) {
     if (!name || !name.trim()) throw new Error('Name is required')
     const amt = Number(amount)
     if (!(amt > 0)) throw new Error('Amount must be greater than 0')
@@ -63,6 +63,7 @@ export function useLending() {
       repayments: [],
       createdAt: new Date().toISOString(),
     }
+    if (accountId) loan.accountId = accountId // optional; absent = no account (money movement not tracked in a balance)
     state.push(loan)
     return loan
   }
@@ -83,6 +84,10 @@ export function useLending() {
     if (patch.date !== undefined) loan.date = patch.date
     if (patch.dueDate !== undefined) loan.dueDate = patch.dueDate
     if (patch.notes !== undefined) loan.notes = patch.notes
+    if (patch.accountId !== undefined) {
+      if (patch.accountId) loan.accountId = patch.accountId
+      else delete loan.accountId
+    }
   }
 
   function deleteLoan(id) {
@@ -100,19 +105,21 @@ export function useLending() {
     }
   }
 
-  function addRepayment(loanId, { date, amount, notes }) {
+  function addRepayment(loanId, { date, amount, notes, accountId }) {
     const loan = findById(loanId)
     if (!loan) throw new Error('Loan not found')
     const amt = Number(amount)
     if (!(amt > 0)) throw new Error('Amount must be greater than 0')
     if (amt > remaining(loan)) throw new Error('Repayment exceeds remaining balance')
-    loan.repayments.push({
+    const repayment = {
       id: generateId(),
       date: date || new Date().toISOString(),
       amount: amt,
       notes: notes || '',
       createdAt: new Date().toISOString(),
-    })
+    }
+    if (accountId) repayment.accountId = accountId // optional
+    loan.repayments.push(repayment)
   }
 
   function deleteRepayment(loanId, repaymentId) {

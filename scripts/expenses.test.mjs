@@ -86,3 +86,31 @@ test('settings: lastCategoryId is optional, defaults to empty, and can be set', 
   setLastCategoryId(undefined)
   assert.equal(settings.lastCategoryId, '')
 })
+
+// ---- Phase 2.4: bulk assign account + Undo ---------------------------------------------------------------------------
+
+test('applyAccountChanges sets / clears accountId, and undoAssignAccount restores exactly what was there', () => {
+  const a = api.addExpense({ ...base, accountId: 'bank' })
+  const b = api.addExpense(base)
+  const c = api.addExpense({ ...base, accountId: 'cash' })
+  const before = JSON.stringify(api.expenses)
+  const applied = api.applyAccountChanges([
+    { id: a.id, from: 'bank', to: 'wallet' },
+    { id: b.id, from: '', to: 'wallet' },
+    { id: c.id, from: 'cash', to: '' },
+    { id: 'missing', from: '', to: 'wallet' },
+  ])
+  assert.equal(applied.length, 3, 'unknown ids are skipped')
+  assert.equal(api.findById(a.id).accountId, 'wallet')
+  assert.equal(api.findById(b.id).accountId, 'wallet')
+  assert.equal('accountId' in api.findById(c.id), false, 'clearing removes the field instead of storing an empty string')
+  api.undoAssignAccount(applied)
+  assert.equal(JSON.stringify(api.expenses), before, 'Undo puts every record back byte-for-byte')
+  assert.equal('accountId' in api.findById(b.id), false)
+})
+
+test('duplicating an expense keeps its account', () => {
+  const a = api.addExpense({ ...base, accountId: 'bank' })
+  const copy = api.duplicateExpense(a.id)
+  assert.equal(copy.accountId, 'bank')
+})

@@ -52,10 +52,10 @@ Verified by reading the code on 2026-11-06 (the README is empty; `hisaab-documen
 |---|---|---|
 | 0 | Data protection: full versioned backup, validated import, pre-change snapshot, restore test | **In progress** — code complete, logic tested in Node, build passes; browser/IndexedDB parts NOT yet verified (see D2) |
 | 1 | Expense tracking redesign (summary, period + cycle filters, transaction management, fast entry, reporting rules, monthly comparison) | **In progress** — 1.1 reporting logic (D3), 1.2 Expenses page (D4) and 1.3 refund-aware Dashboard/Budget + bills linkage + local-noon forms + one CSV exporter (D5) are implemented and browser-checked in headless Chrome. Left from the plan: category-level month comparison UI, optional quick-amount chips (1.4) |
-| 2 | Account management (accounts, transfers, reconciliation) | **In progress.** 2.0 (version stamp + migration framework), 2.1 (pure account math) and 2.2 (store + backup integration, NO UI) are implemented and tested (D7). 2.3 (UI), 2.4, 2.5, 2.6 not started. Owner approved the design with all recommended answers. |
-| 3 | Financial overview (net worth, snapshots, cash flow) + homepage restructure | Not started |
-| 4 | Investment improvements (withdrawals, realized/unrealized, charts) | Not started (one logic fix already made, see D) |
-| 5 | Advanced (goals, insights, receipts, sync) | Not started |
+| 2 | Account management (accounts, transfers, reconciliation) | **Implemented (2.0-2.6), tested in Node (4 time zones) and in headless Chrome (Karachi + New York, desktop + 375px). NOT yet clicked through by the owner on real data, NOT checked on a real phone or in the light theme.** See D8. |
+| 3 | Financial overview (net worth, snapshots, cash flow) + homepage restructure | **Implemented, tested in Node (4 time zones) and headless Chrome (Karachi + New York).** Net worth and its history are derived from the raw records (no stored snapshots, by design); cash flow by cycle; Net worth page; Net worth card on the Dashboard. See D9. NOT clicked through by the owner on real data. |
+| 4 | Investment improvements (withdrawals, realized/unrealized, charts) | **Implemented, tested in Node and headless Chrome.** Withdrawals, realized (average cost) vs unrealized gain, value-vs-money-put-in chart, optional account on contributions/withdrawals. Funds without withdrawals show exactly the numbers they showed before. See D10. |
+| 5 | Advanced (goals, insights, receipts, sync) | **Goals and Insights implemented and tested. Receipts and sync NOT built** (reasons and design notes in D11). Data version is now 3. |
 
 ## D. Completed work
 
@@ -188,19 +188,50 @@ Owner instruction (Session 8): "do 2.0 to 2.2 in one go; you can do recommended 
 - **Real-browser check (headless Chrome, throw-away script outside the repo, Asia/Karachi and America/New_York, 15/15 each):** an existing version-1 user starts normally, is stamped version 2, gets exactly ONE "before-migration" snapshot (with the data, no app-lock), and every record is byte-for-byte unchanged; a second start does nothing more; a fresh install is stamped 2 with no snapshot and no data written; data stamped version 3 shows the "Hisaab did not start" screen (reason, Reload button, fits at 375px) with nothing written, no snapshot and the data untouched; a real "Export full backup" produces `schemaVersion: 2` with the accounts store; importing a FULL version-1 backup through the real Settings dialog shows the accounts row with the "Will be cleared" note (fits at 375px), and after "Replace my data" the accounts are cleared, the expenses are the backup's, a "before-import" snapshot exists and the app restarts at version 2. No page errors. I looked at screenshots of the import preview (375px) and the blocked screen.
 - **NOT verified:** the migration on a real device with your real data (run it after taking a real backup); there is deliberately NO accounts UI yet, so nothing in the browser can create an account (the browser check seeded one directly in localStorage); a real phone; other browsers; the light theme; the failure paths (failing step, no snapshot) were tested in Node only, not in a browser.
 
+### D8. Phase 2.3-2.6 - accounts UI, account in the forms, bills/recurring/lending links, hardening - implemented; tested in Node (4 zones) and headless Chrome (Karachi + New York); NOT clicked through by the owner on real data
+- **UI:** `#/accounts` (list, total, empty state, archived section), `#/accounts/:id` (balance, ledger newest-first grouped by local day with a running balance, Transfer / Reconcile / Edit / Archive / Make default / Delete), account, transfer and reconcile dialogs. Sidebar after Income.
+- **Forms:** `AccountPicker` chips in the expense, income, bill-payment, recurring, loan, repayment, contribution and withdrawal forms; hidden until the first account exists; start on the last used account, else the default, else none. Focus returns to Amount so Enter still saves.
+- **Expenses page:** Account filter (All / Unassigned / each account), account label on rows, bulk **Assign account** (count in the confirmation, `before-bulk-assign` snapshot first, Undo), CSV `account` column. `/expenses?account=none&cycle=all` is the "Review expenses" link on the Accounts page.
+- **Money movements** (never spending or income): loans/repayments (lent = out, repayment = in; borrowed = in, repayment = out) and, from Phase 4, fund contributions (out) and withdrawals (in), each counted on the account named by that record. A confirmed recurring expense uses the template's account, else the default. An account used by any record (including loans, repayments, contributions, withdrawals) cannot be deleted, only archived.
+- **Concurrency incident:** a second Claude session edited the same folder at the same time while Phase 2.3 was being built; the surviving mix was reconciled (see Session 9). One duplicate component (`ReconcileDialog.vue`) was deleted.
+- **Bug found by the browser scenario and fixed:** the account detail page assembled its own record list and forgot fund movements; it now uses `useAccounts().records()` (a source-guard test forbids the Accounts screens from importing the record stores). A ledger tie-break defect (a repayment could be listed before its loan on the same day/second) was fixed with a deterministic rank and a regression test.
+- **Tests:** `accounts-view`, `accounts-lending`, `accounts-integration` test files; the guard "no spending/reporting module knows about accounts" was made precise (no account imports; budget never mentions accounts) and a behavioural test proves summaries, breakdowns, month comparison and budget are identical with and without `accountId`.
+- **Browser (headless Chrome, throw-away scripts outside the repo):** three scenarios, all passing in Asia/Karachi and America/New_York at desktop and 375px with no page errors or console warnings.
+
+### D9. Phase 3 - financial overview - implemented; tested; NOT clicked through by the owner on real data
+- **Design decision:** no stored net-worth snapshots. Net worth on any day is a pure function of the raw records (`src/utils/netWorth.js`), so history can never be stale or lost and nothing needs a migration or backup entry. Accounts, fund values and loan balances are exact for any past day; assets only store a current value, so each is counted at that value from its purchase date (or from the day it was added when it has none).
+- **net worth** = non-archived account balances (a card's debt subtracts) + assets + funds (value that day) + money lent - money borrowed. The account part equals the Accounts page total (tested). A transfer, a loan or contribution paid from an account, and a withdrawal into an account leave it unchanged (tested). `unlinkedInvestmentCount` warns about contributions on/after an account's opening day that name no account (the money may be counted twice).
+- **Cash flow:** `cashFlowByCycle` (income, spending net of refunds, left, savings rate) for the last 6 cycles; the current cycle equals the Dashboard/Budget/Income/Expenses figures (tested).
+- **UI:** `#/net-worth` (total, change since last month-end, five parts linking to their pages, trend chart, by-account list, cash flow table). The Dashboard gets a Net worth card (and an "In accounts" card) once anything is tracked.
+- **Not done:** the Dashboard was not otherwise reorganised (kept additive); the rest of the "homepage restructure" is left for a design decision.
+
+### D10. Phase 4 - investments - implemented; tested; NOT clicked through by the owner on real data
+- **Model:** a fund may now have `withdrawals: [{id, date, amount, notes, accountId?, createdAt}]` (created by the first withdrawal; absent = none). Contributions and withdrawals may carry `accountId`.
+- **Maths (`src/utils/investments.js`):** for a fund WITHOUT withdrawals every figure equals the old formulas (property test over 300 random funds). With withdrawals: current value = latest value entry minus withdrawals after it; realized gain by the average cost method (a withdrawal sells the share `amount / value just before it` of the cost basis); unrealized = current value - remaining cost; total gain = realized + unrealized; identity `total gain = current value + withdrawn - contributed` is property-tested. The D1 behaviour is kept: a contribution after the latest value entry is not added to the value (profit dips until the next value update). `changeSinceLast` backs withdrawals out. Garbage records (null entries) never throw.
+- **UI:** fund page gets a Withdrawals tab (cannot withdraw more than the fund is worth), a realized/unrealized block (shown once a withdrawal exists), a "Value vs money put in" line chart (replaces the old value bar chart), account labels; the portfolio page shows realized/unrealized once any fund has a withdrawal.
+- **Dates:** the investment forms keep saving UTC midnight of the chosen day (the same-day ordering rule depends on it); withdrawals follow suit.
+
+### D11. Phase 5 - goals and insights implemented; receipts and sync NOT built
+- **Goals (`src/utils/goals.js`, `useGoals`, `#/goals`):** a goal has a target amount, optional target date, and either follows an account's balance or is tracked by hand (add / take out money entries). Status is about the schedule only: reached, on track, behind schedule, past its date, no date. Shows the monthly amount needed. New storage key `goals` (backup module, id-unique, item problems are warnings).
+- **Insights (`src/utils/insights.js`, Dashboard section, max 4):** fixed explainable rules, quiet with little data: budget pace/over/under, category spike (>= 1.5x the average of earlier cycles, and a real share of spending), savings rate change between the last two COMPLETE cycles, bills overdue / due within 7 days, "looks like a recurring payment" (same note and amount in 3+ months, no template), goals behind. Each insight states its level in words, a reason and a link. Thresholds are constants, untuned.
+- **Data version 3:** `CURRENT_SCHEMA_VERSION = 3`; migration 2 -> 3 is a stamp only (nothing rewritten, snapshot taken first). It exists so an OLDER app refuses data that has fund withdrawals or goals instead of showing wrong figures. The migration/backup tests were rewritten to be independent of the shipped version.
+- **Receipts - not built, deliberately.** Expense receipts need a new attachment relationship (`expenseId` next to `billId` in the IndexedDB `files` store), backup export/import of those files, a rule for what happens to the files when an expense is deleted (bills keep them in memory for Undo; an orphan sweep would be needed for permanent deletes), and a real-blob browser test of large files. That is a data-safety feature in its own right and was not safe to ship unverified at the end of this session. Suggested design: extend `attachments.js` with `expenseId`, mirror `bill-delete` Undo behaviour, add `expenseId` to the backup attachment records (bump nothing: optional field), and run the existing attachment round-trip test for expenses.
+- **Sync - not built, deliberately.** Hisaab is local-first with no backend. Cross-device sync needs a server or a third-party store, sign-in, encryption of financial data in transit/at rest and conflict handling: an architecture decision for the owner, not a UI feature. Today's way to move data between devices is Settings -> Export / Import full backup.
+
 ## E. Current work
 
-Phase 2.0-2.2 done (D7). Stopped at the end of 2.2 as instructed. Nothing is committed since `d621b42` (11 changed/created files, listed in D7; `future.md` untracked as before). The next step is 2.3 (accounts UI), but see J first: the owner should take a real backup and run the checklists before the first start of this version on real data, because it stamps the data version and takes its first automatic snapshot.
+Phases 0-5 (minus receipts and sync) are implemented and verified by tests and scripted browser runs; **nothing is committed or pushed** (HEAD is `ed3e81f`; Session 9 changes are in the working tree, `future.md` untracked). What is NOT verified: a real phone, the light theme, other browsers, large histories, and the owner's real data. The owner's first start of this version stamps data version 3 and saves one "before-migration" snapshot (no record changes).
 
 ## F. Pending work (priority order)
 
-1. **Owner:** commit (a rollback point, ask me); take a real backup; run the Phase 0 restore checklist; then start this version once on real data and confirm everything looks as before (it stamps `meta.version = 2` and adds one "before-migration" snapshot; no record changes). Click through the Expenses/Dashboard/Budget/Income/Bills checklist.
-2. **Phase 2.3** Accounts UI: list (`#/accounts`, sidebar after Income), add/edit/archive, detail ledger, transfer form, reconcile dialog. Then 2.4 (account picker in expense/income forms + Expenses account filter + CSV `account` column + bulk assign with snapshot and Undo), 2.5 (bills `markPaid`, recurring, loans/repayments), 2.6 (hardening + owner checklist). Each ends with tests, a real-browser check and a stop for review.
-3. Phase 1.4 leftovers (category-level month comparison UI, quick-amount chips): independent.
-4. Verify D1 (investments) in the browser; Phases 3-5 as in section C.
+1. **Owner:** take a real backup (Settings -> Export full backup, with attachments) and keep the file; ask me to commit (several phases are uncommitted, the safest rollback point); run the Phase 0 restore checklist; start this version once on real data and confirm nothing looks different; click through Accounts, Net worth, Goals, Investments (a withdrawal), Expenses (Account filter), the Dashboard Insights, in light and dark theme and on a phone.
+2. **Decisions for the owner:** receipts (D11, design ready); sync (needs an architecture choice); how far to take the "homepage restructure" (the Dashboard only gained cards); whether insight thresholds should be tunable.
+3. Verify D1 (investments) and the new withdrawal maths against the owner's real fund entries (the numbers 222,126 and +80,098 were never explained: needs the owner's entries list).
+4. Phase 1.4 leftovers (category-level month comparison UI, quick-amount chips): independent.
+5. Optional hardening: component-level tests (none exist; the browser scripts live outside the repo), an Income-page bulk "Assign account", a period filter on the account ledger.
 
 ### Open decisions
-None outstanding for 2.3 (the 14 questions were answered by "do the recommended things"). New small ones are listed in G40-G44.
+Receipts, sync and Dashboard layout (above). Everything else was applied from the recommended answers in K.10 and the Session 9 defaults.
 
 ## G. Known issues / technical debt (found during inspection)
 
@@ -253,6 +284,18 @@ None outstanding for 2.3 (the 14 questions were answered by "do the recommended 
 43. **Accounts have no UI yet.** `expense.accountId` / `income.accountId` can only be set programmatically (tests); nothing in the app writes them until 2.4. The backup preview already understands accounts.
 44. A restore of a FULL pre-accounts (v1) backup clears the accounts store by design; the preview says so, but the owner should read that row before pressing "Replace my data" once accounts exist.
 
+45. **Investment dates are still UTC midnight** (also for withdrawals), so the G17 "a day early behind UTC" quirk applies to funds; the same-day ordering rule (date, then createdAt) depends on it. Moving funds to local noon needs a deliberate migration plan.
+46. **Fund value after a contribution:** until a new value update is logged, a fund is valued at its last update (the D1 choice). Net worth and the fund's profit therefore dip by a contribution until then; the Net worth page says so.
+47. **Net worth history is derived, not recorded:** assets are valued at their current value from the purchase date (no value history); archived accounts are excluded (like the Accounts total); money still in an account that was also contributed to a fund without naming the account is counted twice (the page warns).
+48. **Insights are heuristics:** thresholds (15 percentage points of pace, 1.5x category average, 10 points of savings rate, 7 days for bills) are constants that were not tuned on real data; "looks recurring" needs the exact same note and amount in 3+ months; there is no way to dismiss an insight.
+49. **Goals:** a goal that follows an account counts the account's whole balance (no earmarking of part of it); the start day is fixed at creation; reached goals are not archived automatically.
+50. **Receipts and sync are not built** (D11).
+51. **Data version 3 is one-way for old app copies**, like G40: an older copy refuses the data. Remember it when testing an old cached PWA.
+52. **Account ledger:** newest first with "Show more" paging; no period filter or search; lending/investment rows are read-only there (managed on their own pages); bulk Assign account exists on the Expenses page only (income per record).
+53. **The scripted browser checks live outside the repo** (throw-away Chrome DevTools scripts in a session scratchpad); the repo has Node unit/integration tests only, no component tests, no lint.
+54. **Concurrent sessions:** two Claude sessions once edited this folder at the same time (Session 9). Use one session per working tree.
+55. The record list used by account balances is assembled in ONE place (`useAccounts().records()`); a new movement source (e.g. a future stored value) must be added there AND to the pure maths in `utils/accounts.js`, or balances will silently miss it (the source-guard test covers only the Accounts screens).
+
 ## H. Data model and migration notes
 
 - Current schema version: `meta.version = 1` (no migrations have ever run).
@@ -286,6 +329,12 @@ Additive only; no change to stored expense shape in the first pass.
 - **Data version 2.** `meta.version` is now stamped 2 at startup; backups carry `schemaVersion: 2`. The only migration (1 -> 2) rewrites no record. New storage key `accounts` = `{ accounts: [], transfers: [], adjustments: [] }`, absent until the first account exists. Records may carry an optional `accountId`; settings may carry optional `defaultAccountId` / `lastAccountId`. Every backup module list change must keep `STORAGE_KEYS` and `BACKUP_MODULES` in step (accounts is in both).
 - **Shapes.** Account `{id, name, type: cash|bank|wallet|card|other, openingBalance, openingDate ('YYYY-MM-DD'), archived, notes, order, createdAt}`; Transfer `{id, date (local noon ISO), amount > 0, fromAccountId, toAccountId, note, createdAt}`; Adjustment (correction) `{id, accountId, date, amount (signed, non-zero), reconciledTo, note, createdAt}`.
 - **Compatibility matrix (tested):** v1 backup -> this app: accepted (a FULL one clears accounts, with a preview note); v2 -> accepted; v3+ -> refused; a v2 backup -> an older app: refused by that app's own `schemaVersion` check.
+
+### Phase 2.3-5 data notes
+- **Data version 3** (`meta.version`, backup `schemaVersion`). Chain 1 -> 2 -> 3, all stamp-only. Compatibility (tested): v1, v2, v3 backups import; v4+ refused. Never run a version-3 file on an older app.
+- **New optional fields (additive, absent until used):** `accountId` on loans, repayments, fund contributions, fund withdrawals, recurring templates; `withdrawals[]` on a fund; `settings.defaultAccountId` / `lastAccountId` (Phase 2). **New storage key:** `goals` = `[{ id, name, targetAmount, targetDate|null, startDay, accountId?, savings: [{id, date, amount (signed), note, createdAt}], note, createdAt }]`, listed in `BACKUP_MODULES` (array, unique ids, item problems warn).
+- **Derived, never stored:** net worth (and its history), cash flow by cycle, insights, goal progress, every account balance.
+- **Account movement sources** (`utils/accounts.js`): expenses/refunds, income, transfers, corrections, loans, repayments, fund contributions, fund withdrawals. A new source = add it to `useAccounts().records()`, to `accountBalance` AND `accountLedger`, to `referenceCount`, and to the tests.
 
 ## I. Session log
 
@@ -362,15 +411,24 @@ Additive only; no change to stored expense shape in the first pass.
 - **Uncommitted:** 11 changed/created files since `d621b42` (see D7).
 - **Exact next steps:** owner commits and takes a real backup, runs the checklists, starts this version once on real data; then Phase 2.3 (accounts UI).
 
+### Session 9 - 2026-11-10 (Phases 2.3-2.6, 3, 4 and 5 in one session)
+- **Instruction:** the owner took a real backup and asked for everything to be checked and "all phases" completed. Another Claude session was found editing the same folder (Phase 2.3 files changed under me); I stopped and asked, the owner relayed that the other session had stopped, and I carried on as the single owner.
+- **Done:** D8 (accounts UI, account in the forms, bills/recurring/lending/investment links, hardening), D9 (net worth, cash flow, Dashboard card), D10 (investment withdrawals, realized/unrealized, chart), D11 (goals, insights, data version 3). Receipts and sync deliberately not built (D11).
+- **Bugs found by tests/browser and fixed:** a null entry in a fund list crashed the investment maths (property/garbage tests); the account detail page missed fund movements (browser scenario); a repayment could sort before its loan on the same day and second (full-suite run only); the Income and Recurring dialogs lacked an accessible description; an over-strict architecture guard was replaced by a precise one plus a behavioural test.
+- **Tests:** `npm test` 307 (306 pass, 1 intentional skip); `npm run test:tz` 295 per zone (UTC, Karachi, Auckland all pass; New York skips 6 old-date-picker-format tests as before); `npm run build` passes (the >500 kB chunk warning is old). Browser: 5 scenarios in headless Chrome (accounts; forms/filter/bulk assign/CSV; bills/recurring/lending; net worth + investments; goals + insights + the 2 -> 3 upgrade) in Asia/Karachi and America/New_York, desktop and 375px, no page errors or console warnings (see the final report in the conversation for the last run).
+- **Not verified:** a real phone, the light theme, other browsers, large histories, the owner's real data. Nothing committed or pushed.
+- **Files:** new `utils/{accountsView?,investments,netWorth,goals,insights}.js` (`accountsView` pre-existed from the other session), `composables/useGoals.js`, `views/{Accounts,AccountDetail,NetWorth,Goals}View.vue`, `components/{AccountPicker,AccountFormModal,TransferFormModal,ReconcileModal,GoalFormModal,WithdrawalFormModal,FundChart,NetWorthChart}.vue`, tests `{accounts-view,accounts-lending,accounts-integration,investments,networth,goals,insights}.test.mjs`; changed: accounts/reporting/csvExport/migrations/storage/backup utils, the expenses/income/bills/recurring/lending/investments/accounts composables, the expense/income/bill/loan/repayment/contribution forms, Expenses/Income/Recurring/Dashboard/Settings/FundDetail/Investments/LoanDetail views, router, sidebar, the existing CSV and migration tests.
+- **Exact next steps:** the owner's checklist in F1; then decisions on receipts, sync and the Dashboard layout.
+
 ## J. Next recommended action
 
-**Before anything else, protect your data, because this version stamps it for the first time:**
-1. **Ask me to commit** (a rollback point; nothing from Session 8 is committed yet).
-2. **Take a real backup first** (Settings -> Export full backup, with attachments) and keep that file safe. This version will, on its first start with your data, write `meta.version = 2` and save one automatic "before-migration" snapshot. No record is changed. If your backup is `schemaVersion: 2` an OLDER copy of the app will refuse to open it (intended).
-3. **Run the Phase 0 restore checklist** (export with/without attachments, import it back, an old-style file, an invalid file, snapshot list + Download, Reset leaves no snapshot) and the click-through of Expenses, Dashboard, Budget, Income and Bills on your real data, in light theme and on your phone. New in this session: Settings -> Backup & restore import preview now has an "Accounts" row (it only matters once accounts exist).
-4. Then tell me to start **Phase 2.3 (accounts UI)**. It will add the Accounts page, transfer form and reconcile dialog; nothing in 2.0-2.2 shows in the UI until then.
+**Protect your data before the first start of this version (it stamps data version 3):**
+1. **Take a real backup** (Settings -> Export full backup, with attachments) and keep the file somewhere safe. On first start this version writes `meta.version = 3` and saves one automatic "before-migration" snapshot; no record changes. An OLDER copy of the app will refuse the data afterwards (intended).
+2. **Ask me to commit** (nothing from Session 9 is committed; a commit is the rollback point).
+3. **Run the checklists on your real data**, in light and dark theme and on your phone: Phase 0 restore check; Expenses (Account filter, Assign account, CSV); Accounts (add accounts with today's balances, a transfer, a reconcile); an expense/income/bill with an account; Net worth page; Goals; an investment withdrawal; the Dashboard Insights.
+4. Then decide: receipts, sync, and how far the Dashboard layout should change (D11, F2).
 
-## K. Phase 2 design proposal: accounts, transfers, reconciliation (APPROVED with all recommended answers; steps 2.0-2.2 implemented, see D7; 2.3-2.6 not started)
+## K. Phase 2 design proposal: accounts, transfers, reconciliation (APPROVED with all recommended answers; all steps 2.0-2.6 implemented, see D7 and D8)
 
 Goal: know where the money is (cash, bank, wallet, card) without changing what the budget and reports already say. The whole design is additive: if the owner never creates an account, nothing in the app changes.
 

@@ -4,6 +4,9 @@ import { Plus } from '@lucide/vue'
 import { useRecurring } from '../composables/useRecurring.js'
 import { useCategories } from '../composables/useCategories.js'
 import { useSettings } from '../composables/useSettings.js'
+import { useAccounts } from '../composables/useAccounts.js'
+import { initialAccountId } from '../utils/accountsView.js'
+import AccountPicker from '../components/AccountPicker.vue'
 import { toInputDate } from '../utils/date.js'
 import { currentCycle } from '../utils/reporting.js'
 import { toDateCycle, sanitizeResetDay } from '../utils/budgetMath.js'
@@ -14,11 +17,12 @@ import { Input } from '@/components/ui/input/index.js'
 import { Label } from '@/components/ui/label/index.js'
 import { Badge } from '@/components/ui/badge/index.js'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select/index.js'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog/index.js'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog/index.js'
 
 const { recurring, addTemplate, updateTemplate, togglePause, deleteTemplate, sortedByDueDate } = useRecurring()
 const { sorted } = useCategories()
 const { settings } = useSettings()
+const { store: accountStore } = useAccounts()
 
 const cycle = computed(() => toDateCycle(currentCycle(new Date(), sanitizeResetDay(settings.cycleResetDay))))
 const list = computed(() => sortedByDueDate(cycle.value).concat(recurring.filter((r) => !r.active)))
@@ -34,6 +38,7 @@ const form = reactive({
   dueDay: 1,
   leadDays: 0,
   endDate: '',
+  accountId: '', // the account this is paid from; '' = the default account when confirmed (if any)
 })
 
 function resetForm() {
@@ -44,6 +49,7 @@ function resetForm() {
   form.dueDay = 1
   form.leadDays = 0
   form.endDate = ''
+  form.accountId = initialAccountId(accountStore, { mode: 'create', defaultAccountId: '' }) // none: confirm falls back to the default account
 }
 
 function openAdd() {
@@ -61,6 +67,7 @@ function openEdit(tpl) {
   form.dueDay = tpl.dueDay
   form.leadDays = tpl.leadDays
   form.endDate = tpl.endDate ? toInputDate(tpl.endDate) : ''
+  form.accountId = initialAccountId(accountStore, { mode: 'edit', current: tpl.accountId })
   modalOpen.value = true
 }
 
@@ -74,6 +81,7 @@ function submit() {
     leadDays: form.leadDays,
     endDate: form.endDate ? new Date(form.endDate).toISOString() : null,
   }
+  if (accountStore.accounts.length) payload.accountId = form.accountId // only when the picker was shown
   if (editingId.value) {
     updateTemplate(editingId.value, {
       ...payload,
@@ -128,6 +136,7 @@ function categoryFor(id) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{{ editingId ? 'Edit recurring' : 'Add recurring' }}</DialogTitle>
+          <DialogDescription class="sr-only">A repeating expense. You will be asked to confirm it each budget cycle.</DialogDescription>
         </DialogHeader>
         <div class="flex flex-col gap-3">
           <div class="flex flex-col gap-1.5">
@@ -165,6 +174,7 @@ function categoryFor(id) {
             <Label>Lead days (prompt this many days early)</Label>
             <Input v-model="form.leadDays" type="number" min="0" />
           </div>
+          <AccountPicker v-model="form.accountId" />
           <div class="flex flex-col gap-1.5">
             <Label>End date (optional)</Label>
             <Input v-model="form.endDate" type="date" />

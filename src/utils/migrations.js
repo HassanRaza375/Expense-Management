@@ -11,9 +11,12 @@
 //  * Steps run in order and must be IDEMPOTENT. The version stamp is written LAST. If any step (or the stamp) fails,
 //    the snapshot is restored automatically and the version is NOT stamped.
 //  * Version 1 -> 2 is a stamp only: accounts (Phase 2) are purely additive, so no existing record is rewritten.
+//  * Version 2 -> 3 is a stamp only too: investment withdrawals and account links on loans/funds (Phase 4) and savings
+//    goals (Phase 5) are all optional/new, nothing is rewritten. An OLDER app would show wrong fund figures for a fund
+//    with withdrawals, so the stamp makes it refuse the data instead.
 // ---------------------------------------------------------------------------
 
-export const CURRENT_SCHEMA_VERSION = 2
+export const CURRENT_SCHEMA_VERSION = 3
 
 export const MIGRATIONS = [
   {
@@ -24,6 +27,16 @@ export const MIGRATIONS = [
     async up() {
       // Nothing to change: the accounts store, `accountId` on records and the account settings are all optional and
       // absent until used. Stamping the version lets older apps refuse newer backups instead of dropping accounts.
+    },
+  },
+  {
+    from: 2,
+    to: 3,
+    name: 'v3: investment withdrawals, lending/investment account links, goals (version stamp, no data rewritten)',
+    rewrites: false,
+    async up() {
+      // Nothing to change: `withdrawals` on a fund, `accountId` on loans/repayments/contributions/withdrawals and the
+      // `goals` store are all optional and absent until used.
     },
   },
 ]

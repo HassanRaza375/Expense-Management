@@ -14,8 +14,10 @@ import FundFormModal from '../components/FundFormModal.vue'
 
 const router = useRouter()
 const { settings } = useSettings()
-const { funds, addFund, deleteFund, undoDelete, totalInvested, currentValue, profitLoss, profitLossPercent, portfolioInvested, portfolioValue, portfolioProfitLoss } =
+const { funds, addFund, deleteFund, undoDelete, totalInvested, currentValue, profitLoss, profitLossPercent, portfolioInvested, portfolioValue, portfolioProfitLoss, portfolioPerf } =
   useInvestments()
+const portfolio = computed(() => portfolioPerf())
+const anyWithdrawals = computed(() => funds.some((f) => f.withdrawals?.length))
 
 const modalOpen = ref(false)
 const error = ref('')
@@ -69,6 +71,12 @@ const sortedFunds = computed(() => [...funds].sort((a, b) => new Date(b.createdA
         :value="portfolioInvested() > 0 ? ((portfolioProfitLoss() / portfolioInvested()) * 100).toFixed(1) + '%' : '—'"
         :status="portfolioProfitLoss() >= 0 ? 'good' : 'over'"
       />
+    </section>
+
+    <section v-if="funds.length && anyWithdrawals" class="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="portfolio-realized">
+      <StatCard label="Withdrawn" :value="formatCurrency(portfolio.withdrawn, settings.currencySymbol)" />
+      <StatCard label="Realized gain" :value="formatCurrency(portfolio.realizedGain, settings.currencySymbol)" :status="portfolio.realizedGain >= 0 ? 'good' : 'over'" />
+      <StatCard label="Unrealized gain" :value="formatCurrency(portfolio.unrealizedGain, settings.currencySymbol)" :status="portfolio.unrealizedGain >= 0 ? 'good' : 'over'" />
     </section>
 
     <Card v-if="!sortedFunds.length">

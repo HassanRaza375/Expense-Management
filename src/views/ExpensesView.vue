@@ -1,10 +1,14 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { Plus, Trash2, Search, Download, X, TriangleAlert } from '@lucide/vue'
+import { useRoute } from 'vue-router'
+import { Plus, Trash2, Search, Download, X, TriangleAlert, Landmark } from '@lucide/vue'
 import { useExpenses } from '../composables/useExpenses.js'
 import { useCategories } from '../composables/useCategories.js'
 import { useSettings } from '../composables/useSettings.js'
 import { useBills, useConnections } from '../composables/useBills.js'
+import { useAccounts } from '../composables/useAccounts.js'
+import { assignmentPlan, accountPickerChoices } from '../utils/accountsView.js'
+import { saveSnapshot } from '../utils/snapshots.js'
 import {
   resolveFilters,
   filterTransactions,
@@ -22,6 +26,7 @@ import {
   localDayKey,
   isRefund,
   PERIOD_LABELS,
+  ACCOUNT_NONE,
 } from '../utils/reporting.js'
 import { formatCurrency } from '../utils/currency.js'
 import { downloadTransactionsCsv } from '../utils/csvExport.js'
@@ -38,7 +43,8 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog/index.js'
 import { toast } from '@/components/ui/sonner/index.js'
 
-const { expenses, addExpense, updateExpense, deleteExpense, undoDelete, duplicateExpense, deleteMany, restoreMany } = useExpenses()
+const { expenses, addExpense, updateExpense, deleteExpense, undoDelete, duplicateExpense, deleteMany, restoreMany, applyAccountChanges, undoAssignAccount } = useExpenses()
+const { store: accountStore } = useAccounts()
 const { sorted, findById: findCategory } = useCategories()
 const { settings, setLastCategoryId } = useSettings()
 const { linkedBillFor, unlinkExpenses, restoreLinks } = useBills()
@@ -67,8 +73,11 @@ const resetDay = computed(() => {
 const period = ref('all')
 const customStart = ref('')
 const customEnd = ref('')
-const cycleChoice = ref('current') // 'all' | 'current' | 'previous' | 'c:<startKey>'
+// A link such as /expenses?account=none&cycle=all (the Accounts page's "Review expenses") pre-sets these two filters.
+const route = useRoute()
+const cycleChoice = ref(route.query.cycle === 'all' ? 'all' : 'current') // 'all' | 'current' | 'previous' | 'c:<startKey>'
 const categoryId = ref('all')
+const accountFilter = ref(typeof route.query.account === 'string' && route.query.account ? route.query.account : 'all') // 'all' | ACCOUNT_NONE (Unassigned) | an account id (only offered once an account exists)
 const sortMode = ref('newest')
 const query = ref('')
 
@@ -76,6 +85,15 @@ const PERIOD_ORDER = ['this-month', 'last-month', 'this-week', 'last-week', 'thi
 const SORT_LABELS = { newest: 'Newest first', oldest: 'Oldest first', highest: 'Highest amount', lowest: 'Lowest amount' }
 
 const categoryNames = computed(() => Object.fromEntries(sorted().map((c) => [c.id, c.name])))
+
+// ---- accounts (Phase 2.4). Everything is hidden until the first account exists, so the page is unchanged without accounts.
+const hasAccounts = computed(() => accountStore.accounts.length > 0)
+const accountNames = computed(() => Object.fromEntries(accountStore.accounts.map((a) => [a.id, a.name])))
+const knownAccountIds = computed(() => accountStore.accounts.map((a) => a.id))
+const accountLabel = (e) => (e?.accountId ? accountNames.value[e.accountId] || '' : '')
+const accountFilterLabel = computed(() =>
+  accountFilter.value === 'all' ? 'All accounts' : accountFilter.value === ACCOUNT_NONE ? 'Unassigned' : accountNames.value[accountFilter.value] || 'Unknown account'
+)
 
 function categoryFor(id) {
   return findCategory(id) || { name: 'Deleted category', icon: '❓', color: '#8FA0AC' }
@@ -123,6 +141,8 @@ const filtered = computed(() =>
         categoryId: categoryId.value,
         query: query.value,
         categoryNames: categoryNames.value,
+        accountId: accountFilter.value,
+        knownAccountIds: knownAccountIds.value,
         now: now.value,
         resetDay: resetDay.value,
       })
@@ -139,7 +159,7 @@ const topCategory = computed(() => categoryBreakdown(filtered.value).find((c) =>
 // Calendar-month comparison: only the category/search filters apply (not period or cycle).
 const monthly = computed(() =>
   compareMonths(
-    filterTransactions(expenses, { categoryId: categoryId.value, query: query.value, categoryNames: categoryNames.value, now: now.value }),
+    filterTransactions(expenses, { categoryId: categoryId.value, query: query.value, categoryNames: categoryNames.value, accountId: accountFilter.value, knownAccountIds: knownAccountIds.value, now: now.value }),
     { now: now.value }
   )
 )
@@ -153,7 +173,7 @@ const description = computed(() =>
     categoryLabel: categoryId.value !== 'all' ? categoryFor(categoryId.value).name : null,
   })
 )
-const hasActiveFilters = computed(() => description.value.parts.length > 0)
+const hasActiveFilters = computed(() => description.value.parts.length > 0 || accountFilter.value !== 'all')
 
 function clearFilters() {
   period.value = 'all'
@@ -161,6 +181,7 @@ function clearFilters() {
   customEnd.value = ''
   cycleChoice.value = 'all'
   categoryId.value = 'all'
+  accountFilter.value = 'all'
   query.value = ''
 }
 
@@ -182,7 +203,7 @@ const shownCount = computed(() => (byDate.value ? visibleGroups.value.reduce((n,
 
 // ---- selection (cleared whenever the list changes under it)
 const selectedIds = ref(new Set())
-watch([period, customStart, customEnd, cycleChoice, categoryId, query, sortMode], () => {
+watch([period, customStart, customEnd, cycleChoice, categoryId, accountFilter, query, sortMode], () => {
   selectedIds.value = new Set()
   limit.value = PAGE
 })
@@ -290,9 +311,41 @@ function confirmBulkDelete() {
   })
 }
 
+// ---- bulk "Assign account": the confirmation shows the count, a safety snapshot is taken first, and Undo restores every record
+const assignOpen = ref(false)
+const assignTarget = ref('') // '' = remove the account
+const assignChoices = computed(() => accountPickerChoices(accountStore))
+const assignPlan = computed(() => assignmentPlan(expenses, [...selectedIds.value], assignTarget.value, accountStore))
+const assignTargetLabel = computed(() => (assignTarget.value ? accountNames.value[assignTarget.value] || '' : 'No account'))
+
+function openAssign() {
+  assignTarget.value = assignChoices.value[0]?.id || ''
+  assignOpen.value = true
+}
+
+async function confirmAssign() {
+  const plan = assignPlan.value
+  assignOpen.value = false
+  if (!plan.count) {
+    toast('Nothing to change: every selected transaction already has that account')
+    return
+  }
+  try {
+    await saveSnapshot('before-bulk-assign') // a rollback point before a bulk change
+  } catch {
+    if (!window.confirm('A safety snapshot could not be saved. Assign the account anyway? (Undo is still available right after.)')) return
+  }
+  const applied = applyAccountChanges(plan.changes)
+  selectedIds.value = new Set()
+  const label = assignTarget.value ? 'to ' + assignTargetLabel.value : 'cleared'
+  toast('Account ' + label + ' on ' + applied.length + ' transaction' + (applied.length === 1 ? '' : 's'), {
+    action: { label: 'Undo', onClick: () => undoAssignAccount(applied) },
+  })
+}
+
 // ---- CSV of exactly what is on screen (filters + sort). The file is produced by the shared exporter in utils/csvExport.js.
 function exportCsv() {
-  const n = downloadTransactionsCsv(exportOrder.value, { categoryNames: categoryNames.value, now: now.value })
+  const n = downloadTransactionsCsv(exportOrder.value, { categoryNames: categoryNames.value, accountNames: accountNames.value, now: now.value })
   toast(`Exported ${n} transaction${n === 1 ? '' : 's'}`)
 }
 
@@ -439,6 +492,17 @@ const monthStatus = (c) => (c.change > 0 ? 'warn' : c.change < 0 ? 'good' : 'def
               </SelectContent>
             </Select>
           </div>
+          <div v-if="hasAccounts" class="flex min-w-0 flex-col gap-1.5">
+            <Label>Account</Label>
+            <Select v-model="accountFilter">
+              <SelectTrigger data-testid="account-select"><SelectValue>{{ accountFilterLabel }}</SelectValue></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All accounts</SelectItem>
+                <SelectItem :value="ACCOUNT_NONE">Unassigned</SelectItem>
+                <SelectItem v-for="a in accountStore.accounts" :key="a.id" :value="a.id">{{ a.name }}{{ a.archived ? ' (archived)' : '' }}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div class="flex min-w-0 flex-col gap-1.5">
             <Label>Sort</Label>
             <Select v-model="sortMode">
@@ -463,6 +527,7 @@ const monthStatus = (c) => (c.change > 0 ? 'warn' : c.change < 0 ? 'good' : 'def
           <p v-if="filterError" class="m-0 flex items-center gap-1.5 text-sm text-destructive" role="alert"><TriangleAlert class="h-4 w-4" /> {{ filterError }}. Showing everything.</p>
           <div class="flex flex-wrap items-center gap-2">
             <Badge v-for="part in description.parts" :key="part" variant="secondary" class="max-w-full truncate">{{ part }}</Badge>
+            <Badge v-if="accountFilter !== 'all'" variant="secondary" class="max-w-full truncate" data-testid="account-filter-badge">Account: {{ accountFilterLabel }}</Badge>
             <Button v-if="hasActiveFilters" variant="ghost" size="sm" @click="clearFilters"><X class="h-4 w-4" /> Clear filters</Button>
             <Button class="ml-auto" variant="outline" size="sm" :disabled="!filtered.length" data-testid="export-csv" @click="exportCsv">
               <Download class="h-4 w-4" /> Export CSV
@@ -479,9 +544,14 @@ const monthStatus = (c) => (c.change > 0 ? 'warn' : c.change < 0 ? 'good' : 'def
           <Checkbox :model-value="allSelected" aria-label="Select all shown" data-testid="select-all" @update:model-value="toggleSelectAll" />
           {{ selectedIds.size ? `${selectedIds.size} selected` : `Select all ${filtered.length}` }}
         </label>
-        <Button v-if="selectedIds.size" variant="destructive" size="sm" data-testid="bulk-delete" @click="bulkDeleteOpen = true">
-          <Trash2 class="h-4 w-4" /> Delete {{ selectedIds.size }}
-        </Button>
+        <div v-if="selectedIds.size" class="flex flex-wrap items-center gap-2">
+          <Button v-if="hasAccounts" variant="outline" size="sm" data-testid="bulk-assign" @click="openAssign">
+            <Landmark class="h-4 w-4" /> Assign account
+          </Button>
+          <Button variant="destructive" size="sm" data-testid="bulk-delete" @click="bulkDeleteOpen = true">
+            <Trash2 class="h-4 w-4" /> Delete {{ selectedIds.size }}
+          </Button>
+        </div>
       </CardContent>
     </Card>
 
@@ -514,6 +584,7 @@ const monthStatus = (c) => (c.change > 0 ? 'warn' : c.change < 0 ? 'good' : 'def
             :expense="exp"
             :category-name="categoryFor(exp.categoryId).name"
             :category-icon="categoryFor(exp.categoryId).icon"
+            :account-name="accountLabel(exp)"
             :amount-text="money(exp.amount)"
             :selected="selectedIds.has(exp.id)"
             @toggle="toggleSelect(exp.id)"
@@ -535,6 +606,7 @@ const monthStatus = (c) => (c.change > 0 ? 'warn' : c.change < 0 ? 'good' : 'def
           :expense="exp"
           :category-name="categoryFor(exp.categoryId).name"
           :category-icon="categoryFor(exp.categoryId).icon"
+          :account-name="accountLabel(exp)"
           :amount-text="money(exp.amount)"
           :date-text="dayText(exp.date)"
           :selected="selectedIds.has(exp.id)"
@@ -571,6 +643,28 @@ const monthStatus = (c) => (c.change > 0 ? 'warn' : c.change < 0 ? 'good' : 'def
         <DialogFooter>
           <Button variant="ghost" @click="pendingDelete = null">Cancel</Button>
           <Button variant="destructive" data-testid="confirm-delete" @click="confirmDelete">Delete</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Assign an account to the selected transactions -->
+    <Dialog :open="assignOpen" @update:open="(v) => (assignOpen = v)">
+      <DialogContent class="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Assign an account to {{ selectedIds.size }} transaction{{ selectedIds.size === 1 ? '' : 's' }}</DialogTitle>
+          <DialogDescription>Choose the account these transactions belong to. A safety snapshot is saved first and you can undo right after.</DialogDescription>
+        </DialogHeader>
+        <div class="flex flex-wrap gap-2" role="group" aria-label="Account to assign">
+          <Button v-for="a in assignChoices" :key="a.id" type="button" size="sm" :variant="assignTarget === a.id ? 'default' : 'outline'" :aria-pressed="assignTarget === a.id" :data-testid="'assign-' + a.id" @click="assignTarget = a.id">{{ a.name }}</Button>
+          <Button type="button" size="sm" :variant="assignTarget === '' ? 'default' : 'outline'" :aria-pressed="assignTarget === ''" data-testid="assign-none" @click="assignTarget = ''">No account</Button>
+        </div>
+        <p class="m-0 text-sm text-muted-foreground" data-testid="assign-summary">
+          {{ assignPlan.count }} will change{{ assignPlan.unchanged ? ', ' + assignPlan.unchanged + (assignPlan.unchanged === 1 ? ' already has' : ' already have') + ' that account' : '' }}.
+          Account balances change; your spending totals and budget do not.
+        </p>
+        <DialogFooter>
+          <Button variant="ghost" @click="assignOpen = false">Cancel</Button>
+          <Button :disabled="!assignPlan.count" data-testid="confirm-assign" @click="confirmAssign">{{ assignTarget ? 'Assign to ' + assignTargetLabel : 'Remove account' }}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

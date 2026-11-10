@@ -1,7 +1,7 @@
 <script setup>
 import { watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { LayoutDashboard, Receipt, Banknote, ReceiptText, Repeat, Tags, Target, Lock, Package, Bike, HandCoins, ChartCandlestick, Settings, Sun, Moon, BookText } from '@lucide/vue'
+import { LayoutDashboard, Receipt, Banknote, Landmark, Scale, PiggyBank, ReceiptText, Repeat, Tags, Target, Lock, Package, Bike, HandCoins, ChartCandlestick, Settings, Sun, Moon, BookText } from '@lucide/vue'
 import { useSettings } from '../composables/useSettings.js'
 import { useSidebar } from '../composables/useSidebar.js'
 import { cn } from '@/lib/utils.js'
@@ -25,6 +25,9 @@ const items = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/expenses', label: 'Expenses', icon: Receipt },
   { path: '/income', label: 'Income', icon: Banknote },
+  { path: '/accounts', label: 'Accounts', icon: Landmark },
+  { path: '/net-worth', label: 'Net worth', icon: Scale },
+  { path: '/goals', label: 'Goals', icon: PiggyBank },
   { path: '/bills', label: 'Bills', icon: ReceiptText },
   { path: '/recurring', label: 'Recurring', icon: Repeat },
   { path: '/categories', label: 'Categories', icon: Tags },

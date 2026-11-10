@@ -302,16 +302,22 @@ export function resolveFilters({ period = 'all', cycle = null, now = new Date(),
  *  - categoryId: null/'all' = every category.
  *  - query: case-insensitive substring of the note OR of the category's name. Category names come
  *    from `categoryNames` (a plain { id: name } object or a Map); without it only notes match.
+ *  - accountId (Phase 2): null/'all' = every account; ACCOUNT_NONE ('none') = Unassigned (no accountId, or an id that
+ *    is not in `knownAccountIds` when that list is given); anything else = exactly that account. A plain AND.
  */
+export const ACCOUNT_NONE = 'none'
+
 export function filterTransactions(
   list,
-  { period = 'all', cycle = null, categoryId = null, query = '', categoryNames = null, now = new Date(), weekStartsOn = WEEK_STARTS_ON, resetDay } = {}
+  { period = 'all', cycle = null, categoryId = null, query = '', categoryNames = null, accountId = null, knownAccountIds = null, now = new Date(), weekStartsOn = WEEK_STARTS_ON, resetDay } = {}
 ) {
   const range = resolveFilters({ period, cycle, now, weekStartsOn, resetDay })
   if (range.empty) return []
   const bounded = range.startKey !== null || range.endKey !== null
   const q = String(query || '').trim().toLowerCase()
   const wantCategory = categoryId !== null && categoryId !== undefined && categoryId !== 'all'
+  const wantAccount = accountId !== null && accountId !== undefined && accountId !== 'all' && accountId !== ''
+  const known = knownAccountIds ? new Set(knownAccountIds) : null
 
   return (list || []).filter((t) => {
     if (bounded) {
@@ -319,6 +325,11 @@ export function filterTransactions(
       if (key === null || !inRange(key, range)) return false
     }
     if (wantCategory && t.categoryId !== categoryId) return false
+    if (wantAccount) {
+      if (accountId === ACCOUNT_NONE) {
+        if (t.accountId && (!known || known.has(t.accountId))) return false
+      } else if (t.accountId !== accountId) return false
+    }
     if (q) {
       const inNote = String(t.note || '').toLowerCase().includes(q)
       if (!inNote && !String(nameOf(categoryNames, t.categoryId) || '').toLowerCase().includes(q)) return false
@@ -632,15 +643,19 @@ function csvCell(value) {
 /**
  * CSV text for a list of transactions (RFC 4180: CRLF line ends, quoted when needed).
  * Columns: date (local day), amount (always positive), kind (expense|refund), category (NAME),
- * note, source. Pass the list you want exported, e.g. the currently filtered one.
+ * note, source, account (NAME; blank when the record has no account). Pass the list you want exported, e.g. the
+ * currently filtered one.
  * `categoryNames` maps id -> name; an id with no entry is exported as "(deleted category)".
+ * `accountNames` maps account id -> name; an accountId with no entry is exported as "(deleted account)".
  */
-export function transactionsToCsv(list, { categoryNames = null } = {}) {
-  const rows = [['date', 'amount', 'kind', 'category', 'note', 'source']]
+export function transactionsToCsv(list, { categoryNames = null, accountNames = null } = {}) {
+  const rows = [['date', 'amount', 'kind', 'category', 'note', 'source', 'account']]
   for (const t of list || []) {
     const id = t?.categoryId
     const name = id === null || id === undefined ? '' : nameOf(categoryNames, id) || '(deleted category)'
-    rows.push([localDayKey(t?.date) ?? '', (toCents(t) / 100).toFixed(2), isRefund(t) ? 'refund' : 'expense', name, t?.note || '', t?.source || ''])
+    const aid = t?.accountId
+    const account = aid === null || aid === undefined || aid === '' ? '' : nameOf(accountNames, aid) || '(deleted account)'
+    rows.push([localDayKey(t?.date) ?? '', (toCents(t) / 100).toFixed(2), isRefund(t) ? 'refund' : 'expense', name, t?.note || '', t?.source || '', account])
   }
   return rows.map((r) => r.map(csvCell).join(',')).join('\r\n') + '\r\n'
 }

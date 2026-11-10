@@ -10,6 +10,7 @@ import { buildBackup, parseBackup, summarizeBackup, applyBackup } from '../utils
 import { saveSnapshot, listSnapshots, clearSnapshots } from '../utils/snapshots.js'
 import { useExpenses } from '../composables/useExpenses.js'
 import { useCategories } from '../composables/useCategories.js'
+import { useAccounts } from '../composables/useAccounts.js'
 import { downloadTransactionsCsv } from '../utils/csvExport.js'
 import { sortTransactions } from '../utils/reporting.js'
 import { Checkbox } from '@/components/ui/checkbox/index.js'
@@ -26,6 +27,7 @@ const { settings, updateProfile, setCurrencySymbol, setCycleResetDay } = useSett
 const { changePassword } = useAppLock()
 const { expenses } = useExpenses()
 const { categories } = useCategories()
+const { accounts } = useAccounts()
 const { canInstall, isInstalled, promptInstall } = useInstallPrompt()
 
 const profileName = ref(settings.profileName)
@@ -67,7 +69,8 @@ async function exportFull() {
 // Same exporter as the Expenses page (utils/csvExport.js): ALL expenses, newest first, category names, kind column.
 function exportCSV() {
   const names = Object.fromEntries(categories.map((c) => [c.id, c.name]))
-  const n = downloadTransactionsCsv(sortTransactions(expenses, 'newest'), { categoryNames: names })
+  const accountNames = Object.fromEntries(accounts.map((a) => [a.id, a.name]))
+  const n = downloadTransactionsCsv(sortTransactions(expenses, 'newest'), { categoryNames: names, accountNames })
   toast.success(`Exported ${n} transaction${n === 1 ? '' : 's'}`)
 }
 

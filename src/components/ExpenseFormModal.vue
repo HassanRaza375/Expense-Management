@@ -2,6 +2,9 @@
 import { reactive, ref, watch, nextTick } from 'vue'
 import { useCategories } from '../composables/useCategories.js'
 import { useSettings } from '../composables/useSettings.js'
+import { useAccounts } from '../composables/useAccounts.js'
+import { initialAccountId } from '../utils/accountsView.js'
+import AccountPicker from './AccountPicker.vue'
 import { localDayKey, addDays, isDayKey, resolveSavedDate } from '../utils/reporting.js'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog/index.js'
 import { Button } from '@/components/ui/button/index.js'
@@ -18,13 +21,15 @@ const props = defineProps({
 const emit = defineEmits(['close', 'save'])
 
 const { sorted } = useCategories()
-const { settings } = useSettings()
+const { settings, setLastAccountId } = useSettings()
+const { store: accountStore } = useAccounts()
 
 const form = reactive({
   kind: 'expense', // 'expense' | 'refund'
   amount: '',
   date: '',
   categoryId: '',
+  accountId: '', // '' = no account (Unassigned); only used once at least one account exists
   note: '',
 })
 
@@ -70,12 +75,14 @@ watch(
       // read through localDayKey so OLD (UTC-midnight) and NEW (local-noon) records both show the right day
       form.date = localDayKey(props.expense.date) || today.value
       form.categoryId = props.expense.categoryId
+      form.accountId = initialAccountId(accountStore, { mode: 'edit', current: props.expense.accountId })
       form.note = props.expense.note || ''
     } else {
       form.kind = 'expense'
       form.amount = ''
       form.date = today.value
       form.categoryId = startCategory()
+      form.accountId = initialAccountId(accountStore, { mode: 'create', lastAccountId: settings.lastAccountId, defaultAccountId: settings.defaultAccountId })
       form.note = ''
     }
     focusAmount()
@@ -100,18 +107,20 @@ function submit(another = false) {
     return
   }
   const keepOpen = another && !props.expense
-  emit(
-    'save',
-    {
-      // unchanged day => the stored date is kept as-is; a new/changed day is stored as local noon
-      date: resolveSavedDate(props.expense?.date, form.date),
-      amount: amt,
-      categoryId: form.categoryId,
-      note: form.note,
-      kind: form.kind,
-    },
-    { another: keepOpen }
-  )
+  const payload = {
+    // unchanged day => the stored date is kept as-is; a new/changed day is stored as local noon
+    date: resolveSavedDate(props.expense?.date, form.date),
+    amount: amt,
+    categoryId: form.categoryId,
+    note: form.note,
+    kind: form.kind,
+  }
+  // The account is only sent when the picker was shown (an account exists); otherwise records are left untouched.
+  if (accountStore.accounts.length) {
+    payload.accountId = form.accountId
+    if (!props.expense) setLastAccountId(form.accountId)
+  }
+  emit('save', payload, { another: keepOpen })
   if (keepOpen) {
     addedCount.value++
     form.amount = ''
@@ -181,6 +190,8 @@ function categoryLabel(id) {
             </SelectContent>
           </Select>
         </div>
+
+        <AccountPicker v-model="form.accountId" refocus-id="expense-amount" />
 
         <div class="flex flex-col gap-1.5">
           <Label for="expense-note">Note (optional)</Label>

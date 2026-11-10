@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { Plus, Pencil, Trash2 } from '@lucide/vue'
 import { useIncome, INCOME_SOURCE_LABELS } from '../composables/useIncome.js'
 import { useSettings } from '../composables/useSettings.js'
+import { useAccounts } from '../composables/useAccounts.js'
 import { incomeOverview, sanitizeResetDay } from '../utils/budgetMath.js'
 import { formatDayKey } from '../utils/reporting.js'
 import { formatCurrency } from '../utils/currency.js'
@@ -14,6 +15,8 @@ import { toast } from '@/components/ui/sonner/index.js'
 
 const { income, addIncome, updateIncome, deleteIncome, undoDelete } = useIncome()
 const { settings } = useSettings()
+const { findAccount } = useAccounts()
+const accountLabel = (inc) => (inc?.accountId ? findAccount(inc.accountId)?.name || '' : '')
 
 const filterCycleMode = ref('this') // this | last | all
 
@@ -85,7 +88,9 @@ function handleDelete(id) {
         <div v-for="inc in group.items" :key="inc.id" class="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">
           <div class="min-w-0 flex-1 basis-32">
             <div class="truncate font-medium">{{ inc.note || INCOME_SOURCE_LABELS[inc.sourceType] }}</div>
-            <div class="text-xs text-muted-foreground">{{ INCOME_SOURCE_LABELS[inc.sourceType] }}</div>
+            <div class="text-xs text-muted-foreground">
+              {{ INCOME_SOURCE_LABELS[inc.sourceType] }}<span v-if="accountLabel(inc)" data-testid="income-account"> · {{ accountLabel(inc) }}</span>
+            </div>
           </div>
           <div class="ml-auto flex items-center gap-2">
             <div class="amount font-semibold whitespace-nowrap text-status-good">{{ formatCurrency(inc.amount, settings.currencySymbol) }}</div>

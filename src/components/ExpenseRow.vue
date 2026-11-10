@@ -12,6 +12,7 @@ defineProps({
   categoryIcon: { type: String, default: '' },
   amountText: { type: String, required: true }, // already formatted, without sign
   dateText: { type: String, default: '' }, // shown only when rows are not grouped by day
+  accountName: { type: String, default: '' }, // '' = no account (nothing shown)
   selected: { type: Boolean, default: false },
 })
 
@@ -27,6 +28,7 @@ defineEmits(['toggle', 'edit', 'duplicate', 'delete'])
       <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
         <span v-if="dateText">{{ dateText }} ·</span>
         <span class="truncate">{{ categoryName }}</span>
+        <Badge v-if="accountName" variant="outline" class="max-w-32 truncate" data-testid="row-account">{{ accountName }}</Badge>
         <Badge v-if="expense.kind === 'refund'" variant="good">Refund</Badge>
         <Badge v-if="expense.source === 'recurring'" variant="secondary">recurring</Badge>
         <Badge v-if="expense.source === 'bill'" variant="secondary">bill</Badge>

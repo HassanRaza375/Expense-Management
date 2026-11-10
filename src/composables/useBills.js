@@ -287,7 +287,7 @@ export function useBills() {
     return { restoredFiles, failedFiles }
   }
 
-  function markPaid(id, { paidDate, paidBy, paymentMethod, transactionReference, categoryId }) {
+  function markPaid(id, { paidDate, paidBy, paymentMethod, transactionReference, categoryId, accountId }) {
     const bill = findBill(id)
     if (!bill) return
     const category = findCategoryById(categoryId)
@@ -296,7 +296,8 @@ export function useBills() {
     const total = bill.amount + (bill.arrears || 0)
 
     if (bill.linkedExpenseId && findExpense(bill.linkedExpenseId)) {
-      updateExpense(bill.linkedExpenseId, { amount: total, categoryId: category?.id })
+      // accountId undefined = leave the expense's account alone; '' = clear it; an id = move it
+      updateExpense(bill.linkedExpenseId, { amount: total, categoryId: category?.id, accountId })
     } else {
       const expense = addExpense({
         date: paidDate ? new Date(paidDate).toISOString() : new Date().toISOString(),
@@ -305,6 +306,7 @@ export function useBills() {
         note: `${connection?.connectionName || 'Bill'} — ${bill.billingMonth}`,
         source: 'bill',
         billId: bill.id,
+        accountId,
       })
       bill.linkedExpenseId = expense.id
     }
