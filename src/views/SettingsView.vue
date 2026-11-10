@@ -8,6 +8,8 @@ import { useInstallPrompt } from '../composables/useInstallPrompt.js'
 import { usageBytes } from '../utils/storage.js'
 import { buildBackup, parseBackup, summarizeBackup, applyBackup } from '../utils/backup.js'
 import { saveSnapshot, listSnapshots, clearSnapshots } from '../utils/snapshots.js'
+import { getAllAttachments, deleteAttachment, clearAllAttachments } from '../utils/attachments.js'
+import { receiptStats, formatBytes } from '../utils/receipts.js'
 import { useExpenses } from '../composables/useExpenses.js'
 import { useCategories } from '../composables/useCategories.js'
 import { useAccounts } from '../composables/useAccounts.js'
@@ -18,7 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button/index.js'
 import { Input } from '@/components/ui/input/index.js'
 import { Label } from '@/components/ui/label/index.js'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog/index.js'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog/index.js'
 import { toast } from '@/components/ui/sonner/index.js'
 
 const router = useRouter()
@@ -154,12 +156,32 @@ function formatWhen(iso) {
 
 onMounted(refreshSnapshots)
 
+// --- Receipts: what is stored, and a confirmed clean-up of files whose expense is gone ---
+const receipts = ref({ count: 0, bytes: 0, orphans: [], orphanBytes: 0, missing: 0 })
+const cleanupOpen = ref(false)
+async function refreshReceipts() {
+  try {
+    receipts.value = receiptStats(expenses, await getAllAttachments())
+  } catch {
+    // IndexedDB unavailable: show nothing rather than an error
+  }
+}
+onMounted(refreshReceipts)
+async function cleanUpReceipts() {
+  const ids = receipts.value.orphans.map((o) => o.id)
+  cleanupOpen.value = false
+  for (const id of ids) await deleteAttachment(id).catch(() => {})
+  await refreshReceipts()
+  toast.success(ids.length === 1 ? 'Removed 1 unused file' : `Removed ${ids.length} unused files`)
+}
+
 // --- Danger zone ---
 const confirmPhrase = ref('')
 const REQUIRED_PHRASE = 'DELETE MY DATA'
 async function resetAllData() {
   if (confirmPhrase.value !== REQUIRED_PHRASE) return
   await clearSnapshots() // a reset must not leave a readable copy of the data behind
+  await clearAllAttachments().catch(() => {}) // ...nor the stored bill files and receipts
   localStorage.clear()
   location.reload()
 }
@@ -262,6 +284,36 @@ const usageKB = computed(() => (usageBytes() / 1024).toFixed(1))
         <p class="m-0 text-sm text-muted-foreground">{{ usageKB }} KB used (localStorage typically allows 5–10 MB per browser origin)</p>
       </CardContent>
     </Card>
+
+    <Card>
+      <CardHeader><CardTitle class="text-base">Receipts</CardTitle></CardHeader>
+      <CardContent class="flex flex-col gap-2" data-testid="receipts-card">
+        <p class="m-0 text-sm text-muted-foreground" data-testid="receipts-summary">
+          {{ receipts.count }} receipt file{{ receipts.count === 1 ? '' : 's' }} stored on this device ({{ formatBytes(receipts.bytes) }}). They are included in a backup when "include attachments" is ticked.
+        </p>
+        <p v-if="receipts.missing" class="m-0 text-sm text-status-warn">
+          {{ receipts.missing }} receipt{{ receipts.missing === 1 ? ' is' : 's are' }} listed on an expense but the file is not on this device (for example after restoring a backup made without attachments).
+        </p>
+        <div v-if="receipts.orphans.length" class="flex flex-wrap items-center gap-2">
+          <span class="text-sm text-muted-foreground" data-testid="receipts-orphans">{{ receipts.orphans.length }} file{{ receipts.orphans.length === 1 ? '' : 's' }} ({{ formatBytes(receipts.orphanBytes) }}) belong to deleted expenses.</span>
+          <Button variant="outline" size="sm" data-testid="receipts-cleanup" @click="cleanupOpen = true">Remove them</Button>
+        </div>
+        <p v-else class="m-0 text-xs text-muted-foreground">Deleting an expense keeps its receipts so that Undo always works. Anything left over would be listed here.</p>
+      </CardContent>
+    </Card>
+
+    <Dialog :open="cleanupOpen" @update:open="(v) => (cleanupOpen = v)">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Remove {{ receipts.orphans.length }} unused file{{ receipts.orphans.length === 1 ? '' : 's' }}?</DialogTitle>
+          <DialogDescription>These receipts belong to expenses that no longer exist. This frees {{ formatBytes(receipts.orphanBytes) }} and cannot be undone.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="ghost" @click="cleanupOpen = false">Cancel</Button>
+          <Button variant="destructive" data-testid="receipts-cleanup-confirm" @click="cleanUpReceipts">Remove</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <Card class="border-destructive/50">
       <CardHeader><CardTitle class="text-base text-destructive">Danger zone</CardTitle></CardHeader>

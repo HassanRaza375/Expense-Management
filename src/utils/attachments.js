@@ -20,7 +20,7 @@ function openDB() {
   return dbPromise
 }
 
-// entry: { id, billId, kind, filename, mimeType, size, blob }
+// entry: { id, billId?, expenseId?, kind, filename, mimeType, size, blob }   (billId for bill files, expenseId for receipts)
 export async function putAttachment(entry) {
   const db = await openDB()
   return new Promise((resolve, reject) => {
@@ -56,6 +56,17 @@ export async function deleteAttachment(id) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite')
     tx.objectStore(STORE_NAME).delete(id)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+// Removes EVERY stored file (bill attachments and receipts). Only for "Reset all data".
+export async function clearAllAttachments() {
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite')
+    tx.objectStore(STORE_NAME).clear()
     tx.oncomplete = () => resolve()
     tx.onerror = () => reject(tx.error)
   })

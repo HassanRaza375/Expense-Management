@@ -1,5 +1,5 @@
 <script setup>
-import { Pencil, Copy, Trash2 } from '@lucide/vue'
+import { Pencil, Copy, Trash2, Paperclip } from '@lucide/vue'
 import { Button } from '@/components/ui/button/index.js'
 import { Checkbox } from '@/components/ui/checkbox/index.js'
 import { Badge } from '@/components/ui/badge/index.js'
@@ -29,6 +29,9 @@ defineEmits(['toggle', 'edit', 'duplicate', 'delete'])
         <span v-if="dateText">{{ dateText }} ·</span>
         <span class="truncate">{{ categoryName }}</span>
         <Badge v-if="accountName" variant="outline" class="max-w-32 truncate" data-testid="row-account">{{ accountName }}</Badge>
+        <button v-if="expense.receipts?.length" type="button" class="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-xs outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50" :aria-label="expense.receipts.length === 1 ? '1 receipt, open to view' : expense.receipts.length + ' receipts, open to view'" data-testid="row-receipt" @click="$emit('edit')">
+          <Paperclip class="h-3 w-3" aria-hidden="true" />{{ expense.receipts.length }}
+        </button>
         <Badge v-if="expense.kind === 'refund'" variant="good">Refund</Badge>
         <Badge v-if="expense.source === 'recurring'" variant="secondary">recurring</Badge>
         <Badge v-if="expense.source === 'bill'" variant="secondary">bill</Badge>

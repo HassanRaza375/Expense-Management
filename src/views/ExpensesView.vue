@@ -43,7 +43,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog/index.js'
 import { toast } from '@/components/ui/sonner/index.js'
 
-const { expenses, addExpense, updateExpense, deleteExpense, undoDelete, duplicateExpense, deleteMany, restoreMany, applyAccountChanges, undoAssignAccount } = useExpenses()
+const { expenses, addExpense, updateExpense, deleteExpense, undoDelete, duplicateExpense, deleteMany, restoreMany, applyAccountChanges, undoAssignAccount, addReceipt } = useExpenses()
 const { store: accountStore } = useAccounts()
 const { sorted, findById: findCategory } = useCategories()
 const { settings, setLastCategoryId } = useSettings()
@@ -236,13 +236,30 @@ function openEdit(exp) {
   modalOpen.value = true
 }
 
+// Receipt files picked while adding an expense are saved right after it exists; a failure is reported but never blocks the expense.
+async function attachStaged(expenseId, files) {
+  let saved = 0
+  for (const file of files) {
+    try {
+      await addReceipt(expenseId, file)
+      saved++
+    } catch (err) {
+      toast.error(`${file.name}: ${err?.message || 'could not be saved'}`)
+    }
+  }
+  if (saved) toast(saved === 1 ? 'Receipt attached' : `${saved} receipts attached`)
+}
+
 function handleSave(payload, { another = false } = {}) {
+  const receiptFiles = payload.receiptFiles
+  delete payload.receiptFiles
   try {
     if (editingExpense.value) {
       updateExpense(editingExpense.value.id, payload)
       toast(payload.kind === 'refund' ? 'Refund updated' : 'Expense updated')
     } else {
-      addExpense(payload)
+      const created = addExpense(payload)
+      if (receiptFiles?.length) attachStaged(created.id, receiptFiles)
       setLastCategoryId(payload.categoryId)
       toast(payload.kind === 'refund' ? 'Refund added' : 'Expense added')
     }

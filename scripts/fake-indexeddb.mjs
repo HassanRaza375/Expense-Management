@@ -1,6 +1,6 @@
 // Minimal in-memory IndexedDB for Node tests (test helper only; nothing in src/ imports it).
 // Supports exactly what src/utils/attachments.js and src/utils/snapshots.js use: indexedDB.open / deleteDatabase,
-// createObjectStore({keyPath}), transaction(store, mode).objectStore(store).put/get/getAll/delete, tx.oncomplete,
+// createObjectStore({keyPath}), transaction(store, mode).objectStore(store).put/get/getAll/delete/clear, tx.oncomplete,
 // request.onsuccess/onerror, db.close(). Values are structuredClone()d like the real thing (Blob survives).
 export function installFakeIndexedDB() {
   const databases = new Map() // name -> Map(storeName -> { keyPath, data: Map })
@@ -46,6 +46,7 @@ export function installFakeIndexedDB() {
               get: (key) => run(() => (store.data.has(key) ? structuredClone(store.data.get(key)) : undefined)),
               getAll: () => run(() => [...store.data.values()].map((v) => structuredClone(v))),
               delete: (key) => run(() => void store.data.delete(key)),
+              clear: () => run(() => void store.data.clear()),
             })
             return tx
           },

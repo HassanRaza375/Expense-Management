@@ -1,6 +1,9 @@
 import { reactive, watch } from 'vue'
 import { get, set, STORAGE_KEYS } from '../utils/storage.js'
 import { generateId } from '../utils/id.js'
+import { putAttachment, deleteAttachment } from '../utils/attachments.js'
+import { validateReceiptFile } from '../utils/receipts.js'
+import { shrinkReceiptImage } from '../utils/receiptImage.js'
 
 const state = reactive(get(STORAGE_KEYS.EXPENSES, []))
 
@@ -92,6 +95,7 @@ export function useExpenses() {
       billId: null,
       createdAt: new Date().toISOString(),
     }
+    delete copy.receipts // the copy must NOT share the original's receipt files (deleting one would delete the other's)
     state.push(copy)
     return copy
   }
@@ -136,6 +140,45 @@ export function useExpenses() {
     }
   }
 
+  // ---- receipts ----
+  // The file goes into IndexedDB first, then the small description onto the expense, so a failed save never leaves an
+  // expense pointing at a file that is not there. A large photo is shrunk first (see utils/receiptImage.js).
+  // Returns the receipt description. Throws an Error with a plain-sentence message.
+  async function addReceipt(expenseId, file) {
+    const expense = findById(expenseId)
+    if (!expense) throw new Error('That expense no longer exists')
+    const problem = validateReceiptFile(file, (expense.receipts || []).length)
+    if (problem) throw new Error(problem)
+    const prepared = await shrinkReceiptImage(file)
+    const tooBig = validateReceiptFile(prepared, 0)
+    if (tooBig) throw new Error(tooBig)
+    const id = generateId()
+    try {
+      await putAttachment({ id, expenseId, kind: 'receipt', filename: prepared.name || 'receipt', mimeType: prepared.type, size: prepared.size, blob: prepared })
+    } catch {
+      throw new Error('Could not save the receipt (browser storage may be full)')
+    }
+    const live = findById(expenseId)
+    if (!live) {
+      // the expense was deleted while the file was being saved: keep nothing dangling
+      await deleteAttachment(id).catch(() => {})
+      throw new Error('That expense no longer exists')
+    }
+    const receipt = { id, filename: prepared.name || 'receipt', mimeType: prepared.type, size: prepared.size }
+    if (!Array.isArray(live.receipts)) live.receipts = []
+    live.receipts.push(receipt)
+    return receipt
+  }
+
+  // Removes the description first, then the file (a failure leaves an orphan file, never a dangling description).
+  async function removeReceipt(expenseId, receiptId) {
+    const expense = findById(expenseId)
+    if (!expense || !Array.isArray(expense.receipts)) return
+    expense.receipts = expense.receipts.filter((r) => r.id !== receiptId)
+    if (!expense.receipts.length) delete expense.receipts
+    await deleteAttachment(receiptId).catch(() => {})
+  }
+
   function reassignCategory(fromCategoryId, toCategoryId) {
     state.forEach((e) => {
       if (e.categoryId === fromCategoryId) e.categoryId = toCategoryId
@@ -167,6 +210,8 @@ export function useExpenses() {
     findById,
     applyAccountChanges,
     undoAssignAccount,
+    addReceipt,
+    removeReceipt,
     addExpense,
     updateExpense,
     deleteExpense,

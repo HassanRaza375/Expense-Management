@@ -55,7 +55,7 @@ Verified by reading the code on 2026-11-06 (the README is empty; `hisaab-documen
 | 2 | Account management (accounts, transfers, reconciliation) | **Implemented (2.0-2.6), tested in Node (4 time zones) and in headless Chrome (Karachi + New York, desktop + 375px). NOT yet clicked through by the owner on real data, NOT checked on a real phone or in the light theme.** See D8. |
 | 3 | Financial overview (net worth, snapshots, cash flow) + homepage restructure | **Implemented, tested in Node (4 time zones) and headless Chrome (Karachi + New York).** Net worth and its history are derived from the raw records (no stored snapshots, by design); cash flow by cycle; Net worth page; Net worth card on the Dashboard. See D9. NOT clicked through by the owner on real data. |
 | 4 | Investment improvements (withdrawals, realized/unrealized, charts) | **Implemented, tested in Node and headless Chrome.** Withdrawals, realized (average cost) vs unrealized gain, value-vs-money-put-in chart, optional account on contributions/withdrawals. Funds without withdrawals show exactly the numbers they showed before. See D10. |
-| 5 | Advanced (goals, insights, receipts, sync) | **Goals and Insights implemented and tested. Receipts and sync NOT built** (reasons and design notes in D11). Data version is now 3. |
+| 5 | Advanced (goals, insights, receipts, sync) | **Goals, Insights and expense receipts implemented and tested** (receipts also checked with real files in headless Chrome). **Sync NOT built** (needs an architecture decision, see D11). Data version is now 3. |
 
 ## D. Completed work
 
@@ -211,27 +211,27 @@ Owner instruction (Session 8): "do 2.0 to 2.2 in one go; you can do recommended 
 - **UI:** fund page gets a Withdrawals tab (cannot withdraw more than the fund is worth), a realized/unrealized block (shown once a withdrawal exists), a "Value vs money put in" line chart (replaces the old value bar chart), account labels; the portfolio page shows realized/unrealized once any fund has a withdrawal.
 - **Dates:** the investment forms keep saving UTC midnight of the chosen day (the same-day ordering rule depends on it); withdrawals follow suit.
 
-### D11. Phase 5 - goals and insights implemented; receipts and sync NOT built
+### D11. Phase 5 - goals, insights and receipts implemented; sync NOT built
 - **Goals (`src/utils/goals.js`, `useGoals`, `#/goals`):** a goal has a target amount, optional target date, and either follows an account's balance or is tracked by hand (add / take out money entries). Status is about the schedule only: reached, on track, behind schedule, past its date, no date. Shows the monthly amount needed. New storage key `goals` (backup module, id-unique, item problems are warnings).
 - **Insights (`src/utils/insights.js`, Dashboard section, max 4):** fixed explainable rules, quiet with little data: budget pace/over/under, category spike (>= 1.5x the average of earlier cycles, and a real share of spending), savings rate change between the last two COMPLETE cycles, bills overdue / due within 7 days, "looks like a recurring payment" (same note and amount in 3+ months, no template), goals behind. Each insight states its level in words, a reason and a link. Thresholds are constants, untuned.
 - **Data version 3:** `CURRENT_SCHEMA_VERSION = 3`; migration 2 -> 3 is a stamp only (nothing rewritten, snapshot taken first). It exists so an OLDER app refuses data that has fund withdrawals or goals instead of showing wrong figures. The migration/backup tests were rewritten to be independent of the shipped version.
-- **Receipts - not built, deliberately.** Expense receipts need a new attachment relationship (`expenseId` next to `billId` in the IndexedDB `files` store), backup export/import of those files, a rule for what happens to the files when an expense is deleted (bills keep them in memory for Undo; an orphan sweep would be needed for permanent deletes), and a real-blob browser test of large files. That is a data-safety feature in its own right and was not safe to ship unverified at the end of this session. Suggested design: extend `attachments.js` with `expenseId`, mirror `bill-delete` Undo behaviour, add `expenseId` to the backup attachment records (bump nothing: optional field), and run the existing attachment round-trip test for expenses.
+- **Receipts (built in Session 10).** An expense can have up to 5 receipts (photo or PDF, 15 MB each after shrinking). The file lives in the existing IndexedDB `hisaab-attachments` / `files` store as `{ id, expenseId, kind: 'receipt', filename, mimeType, size, blob }`; the expense carries a small optional `receipts: [{id, filename, mimeType, size}]`. **Safety rule: deleting an expense never deletes its files**, so Undo (single, bulk) and snapshot restores always find their receipts; files whose expense is gone are "orphans", shown in Settings -> Receipts and removed only by a confirmed clean-up. Photos over 1.5 MB are re-encoded to JPEG (max side 1600 px, quality 0.82) before storing; PDFs and small images are stored untouched; on any problem the original is stored. Attaching while ADDING an expense holds the files and saves them right after the expense; while EDITING they save immediately. A duplicate does not inherit receipts. Backups carry receipts (with `expenseId`) only for expenses that still exist; "Reset all data" now clears every stored file (bill attachments too). Pure rules in `src/utils/receipts.js`, image shrinking in `src/utils/receiptImage.js` (browser-only, never throws), store in `useExpenses` (`addReceipt`, `removeReceipt`), UI in `ReceiptAttach.vue`, a paperclip badge on rows, a Receipts card in Settings.
 - **Sync - not built, deliberately.** Hisaab is local-first with no backend. Cross-device sync needs a server or a third-party store, sign-in, encryption of financial data in transit/at rest and conflict handling: an architecture decision for the owner, not a UI feature. Today's way to move data between devices is Settings -> Export / Import full backup.
 
 ## E. Current work
 
-Phases 0-5 (minus receipts and sync) are implemented and verified by tests and scripted browser runs; **nothing is committed or pushed** (HEAD is `ed3e81f`; Session 9 changes are in the working tree, `future.md` untracked). What is NOT verified: a real phone, the light theme, other browsers, large histories, and the owner's real data. The owner's first start of this version stamps data version 3 and saves one "before-migration" snapshot (no record changes).
+Phases 0-5 (minus sync) are implemented and verified by tests and scripted browser runs; **nothing is committed or pushed** (HEAD is `ed3e81f`; Session 9 changes are in the working tree, `future.md` untracked). What is NOT verified: a real phone, the light theme, other browsers, large histories, and the owner's real data. The owner's first start of this version stamps data version 3 and saves one "before-migration" snapshot (no record changes).
 
 ## F. Pending work (priority order)
 
-1. **Owner:** take a real backup (Settings -> Export full backup, with attachments) and keep the file; ask me to commit (several phases are uncommitted, the safest rollback point); run the Phase 0 restore checklist; start this version once on real data and confirm nothing looks different; click through Accounts, Net worth, Goals, Investments (a withdrawal), Expenses (Account filter), the Dashboard Insights, in light and dark theme and on a phone.
-2. **Decisions for the owner:** receipts (D11, design ready); sync (needs an architecture choice); how far to take the "homepage restructure" (the Dashboard only gained cards); whether insight thresholds should be tunable.
+1. **Owner:** take a real backup (Settings -> Export full backup, with attachments) and keep the file; ask me to commit (several phases are uncommitted, the safest rollback point); run the Phase 0 restore checklist; start this version once on real data and confirm nothing looks different; click through Accounts, Net worth, Goals, Investments (a withdrawal), Expenses (Account filter, attach a receipt photo from your phone camera), Settings -> Receipts, the Dashboard Insights, in light and dark theme and on a phone.
+2. **Decisions for the owner:** sync (needs an architecture choice, D11); how far to take the "homepage restructure" (the Dashboard only gained cards); whether insight thresholds should be tunable.
 3. Verify D1 (investments) and the new withdrawal maths against the owner's real fund entries (the numbers 222,126 and +80,098 were never explained: needs the owner's entries list).
 4. Phase 1.4 leftovers (category-level month comparison UI, quick-amount chips): independent.
 5. Optional hardening: component-level tests (none exist; the browser scripts live outside the repo), an Income-page bulk "Assign account", a period filter on the account ledger.
 
 ### Open decisions
-Receipts, sync and Dashboard layout (above). Everything else was applied from the recommended answers in K.10 and the Session 9 defaults.
+Sync and Dashboard layout (above). Everything else was applied from the recommended answers in K.10 and the Session 9 defaults.
 
 ## G. Known issues / technical debt (found during inspection)
 
@@ -289,12 +289,14 @@ Receipts, sync and Dashboard layout (above). Everything else was applied from th
 47. **Net worth history is derived, not recorded:** assets are valued at their current value from the purchase date (no value history); archived accounts are excluded (like the Accounts total); money still in an account that was also contributed to a fund without naming the account is counted twice (the page warns).
 48. **Insights are heuristics:** thresholds (15 percentage points of pace, 1.5x category average, 10 points of savings rate, 7 days for bills) are constants that were not tuned on real data; "looks recurring" needs the exact same note and amount in 3+ months; there is no way to dismiss an insight.
 49. **Goals:** a goal that follows an account counts the account's whole balance (no earmarking of part of it); the start day is fixed at creation; reached goals are not archived automatically.
-50. **Receipts and sync are not built** (D11).
+50. **Sync is not built** (D11).
 51. **Data version 3 is one-way for old app copies**, like G40: an older copy refuses the data. Remember it when testing an old cached PWA.
 52. **Account ledger:** newest first with "Show more" paging; no period filter or search; lending/investment rows are read-only there (managed on their own pages); bulk Assign account exists on the Expenses page only (income per record).
 53. **The scripted browser checks live outside the repo** (throw-away Chrome DevTools scripts in a session scratchpad); the repo has Node unit/integration tests only, no component tests, no lint.
 54. **Concurrent sessions:** two Claude sessions once edited this folder at the same time (Session 9). Use one session per working tree.
 55. The record list used by account balances is assembled in ONE place (`useAccounts().records()`); a new movement source (e.g. a future stored value) must be added there AND to the pure maths in `utils/accounts.js`, or balances will silently miss it (the source-guard test covers only the Accounts screens).
+56. **Receipts:** a large photo is re-encoded to a smaller JPEG and the original is NOT kept (lossy by design; a very fine print may be less readable). Removing a saved receipt has no Undo. Restoring a backup made WITHOUT attachments leaves expenses listing receipts whose files are missing; Settings -> Receipts counts them. HEIC photos are accepted but only some browsers can display them. Receipts are not in a snapshot (snapshots never hold files); because files outlive deleted expenses, restoring a snapshot finds them again as long as the clean-up was not run. Not tested on a real phone camera.
+57. "Reset all data" now also clears bill attachments and receipts (G3 is resolved for files); it still uses `localStorage.clear()`, so the app-lock record and `meta` go with it.
 
 ## H. Data model and migration notes
 
@@ -329,6 +331,9 @@ Additive only; no change to stored expense shape in the first pass.
 - **Data version 2.** `meta.version` is now stamped 2 at startup; backups carry `schemaVersion: 2`. The only migration (1 -> 2) rewrites no record. New storage key `accounts` = `{ accounts: [], transfers: [], adjustments: [] }`, absent until the first account exists. Records may carry an optional `accountId`; settings may carry optional `defaultAccountId` / `lastAccountId`. Every backup module list change must keep `STORAGE_KEYS` and `BACKUP_MODULES` in step (accounts is in both).
 - **Shapes.** Account `{id, name, type: cash|bank|wallet|card|other, openingBalance, openingDate ('YYYY-MM-DD'), archived, notes, order, createdAt}`; Transfer `{id, date (local noon ISO), amount > 0, fromAccountId, toAccountId, note, createdAt}`; Adjustment (correction) `{id, accountId, date, amount (signed, non-zero), reconciledTo, note, createdAt}`.
 - **Compatibility matrix (tested):** v1 backup -> this app: accepted (a FULL one clears accounts, with a preview note); v2 -> accepted; v3+ -> refused; a v2 backup -> an older app: refused by that app's own `schemaVersion` check.
+
+### Phase 5 receipts data notes
+- Optional `expense.receipts: [{ id, filename, mimeType, size }]` (absent = none) and an optional `expenseId` on stored attachment files (`kind: 'receipt'`); backup attachment entries carry `expenseId`. Additive within data version 3 (no stamp needed: nothing outside this working tree had version 3 yet). An older app would ignore `receipts`.
 
 ### Phase 2.3-5 data notes
 - **Data version 3** (`meta.version`, backup `schemaVersion`). Chain 1 -> 2 -> 3, all stamp-only. Compatibility (tested): v1, v2, v3 backups import; v4+ refused. Never run a version-3 file on an older app.
@@ -420,13 +425,20 @@ Additive only; no change to stored expense shape in the first pass.
 - **Files:** new `utils/{accountsView?,investments,netWorth,goals,insights}.js` (`accountsView` pre-existed from the other session), `composables/useGoals.js`, `views/{Accounts,AccountDetail,NetWorth,Goals}View.vue`, `components/{AccountPicker,AccountFormModal,TransferFormModal,ReconcileModal,GoalFormModal,WithdrawalFormModal,FundChart,NetWorthChart}.vue`, tests `{accounts-view,accounts-lending,accounts-integration,investments,networth,goals,insights}.test.mjs`; changed: accounts/reporting/csvExport/migrations/storage/backup utils, the expenses/income/bills/recurring/lending/investments/accounts composables, the expense/income/bill/loan/repayment/contribution forms, Expenses/Income/Recurring/Dashboard/Settings/FundDetail/Investments/LoanDetail views, router, sidebar, the existing CSV and migration tests.
 - **Exact next steps:** the owner's checklist in F1; then decisions on receipts, sync and the Dashboard layout.
 
+### Session 10 - 2026-11-10 (commit, then expense receipts)
+- **Instruction:** "ok do it" after I offered to build receipts or commit first. I committed Session 9 as `8b0cebd` (not pushed; `future.md` left untracked), then built receipts (D11).
+- **Done:** receipts end to end (see D11); `clearAllAttachments`; the fake IndexedDB in `scripts/` gained `clear()`.
+- **Tests:** new `receipts.test.mjs` (14: pure rules, store, delete/undo safety, duplicate, delete racing a save, orphan clean-up, backup round trip with real bytes, reset); `npm test` 321 (320 pass, 1 intentional skip); `npm run test:tz` 295 per zone; `npm run build` passes. Browser (production build, real files made with sharp: a PNG, a 10.2 MB JPEG, a PDF, a text file) in Asia/Karachi and America/New_York: refused text file, exact small PNG, 10.2 MB photo stored as 0.61 MB, PDF untouched, View opens a blob URL, remove, badge count, attach-while-adding, delete keeps files, Undo restores, Settings orphan report + confirmed clean-up, backup carries receipts, 375px layouts, Reset clears files, no page errors or console warnings. Regression: scenario-acc2 and scenario-p5 still pass.
+- **Harness notes (not app bugs):** a test helper that opened the attachments database before the app created it left it without its object store and broke the first save (the helper now checks the database exists first); my own click on "Reset all data" was intercepted by a toast at 375px (used the button's own click). Earlier in Session 9 the scenarios failed against the Vite DEV server after heavy editing (duplicate module copies) and passed against the production build: run browser checks against `npm run build` + `vite preview`.
+- **Not verified:** a real phone camera/HEIC, other browsers, very many large receipts, the owner's real data. Receipts commit pending.
+
 ## J. Next recommended action
 
 **Protect your data before the first start of this version (it stamps data version 3):**
 1. **Take a real backup** (Settings -> Export full backup, with attachments) and keep the file somewhere safe. On first start this version writes `meta.version = 3` and saves one automatic "before-migration" snapshot; no record changes. An OLDER copy of the app will refuse the data afterwards (intended).
 2. **Ask me to commit** (nothing from Session 9 is committed; a commit is the rollback point).
 3. **Run the checklists on your real data**, in light and dark theme and on your phone: Phase 0 restore check; Expenses (Account filter, Assign account, CSV); Accounts (add accounts with today's balances, a transfer, a reconcile); an expense/income/bill with an account; Net worth page; Goals; an investment withdrawal; the Dashboard Insights.
-4. Then decide: receipts, sync, and how far the Dashboard layout should change (D11, F2).
+4. Then decide: sync, and how far the Dashboard layout should change (D11, F2).
 
 ## K. Phase 2 design proposal: accounts, transfers, reconciliation (APPROVED with all recommended answers; all steps 2.0-2.6 implemented, see D7 and D8)
 

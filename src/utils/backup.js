@@ -1,5 +1,6 @@
 import { get, set, remove, getRaw, setRaw, STORAGE_KEYS } from './storage.js'
 import { getAllAttachments, putAttachment } from './attachments.js'
+import { exportableAttachments } from './receipts.js'
 import { CURRENT_SCHEMA_VERSION } from './migrations.js'
 import { ACCOUNT_TYPES } from './accounts.js'
 import { isDayKey } from './reporting.js'
@@ -15,7 +16,7 @@ import { isDayKey } from './reporting.js'
 //     exportedAt: ISO string,
 //     counts: { expenses: 120, ... },   // used to detect truncated/edited files
 //     data: { settings, categories, expenses, ... },  // null = key did not exist
-//     attachments?: [{ id, billId, kind, filename, mimeType, size, data: <base64> }]
+//     attachments?: [{ id, billId?, expenseId?, kind, filename, mimeType, size, data: <base64> }]   (expenseId = an expense receipt)
 //   }
 //
 // Legacy files (`hisaab-main-backup`, `hisaab-vault-assets-backup`) are still accepted.
@@ -166,7 +167,8 @@ function fromBase64(b64) {
 }
 
 async function exportAttachments() {
-  const entries = await getAllAttachments()
+  // bill files as before; a receipt only when its expense still exists (orphans are not worth carrying around)
+  const entries = exportableAttachments(await getAllAttachments(), get(STORAGE_KEYS.EXPENSES, []))
   const out = []
   for (const e of entries) {
     if (!e || !e.blob) continue
@@ -174,6 +176,7 @@ async function exportAttachments() {
     out.push({
       id: e.id,
       billId: e.billId,
+      expenseId: e.expenseId,
       kind: e.kind,
       filename: e.filename,
       mimeType: e.mimeType,
@@ -428,7 +431,7 @@ export async function applyBackup(backup, { restoreAttachments = true } = {}) {
     for (const a of backup.attachments || []) {
       try {
         const blob = new Blob([fromBase64(a.data)], { type: a.mimeType || 'application/octet-stream' })
-        await putAttachment({ id: a.id, billId: a.billId, kind: a.kind, filename: a.filename, mimeType: a.mimeType, size: a.size, blob })
+        await putAttachment({ id: a.id, billId: a.billId, expenseId: a.expenseId, kind: a.kind, filename: a.filename, mimeType: a.mimeType, size: a.size, blob })
         restoredAttachments++
       } catch {
         failedAttachments++

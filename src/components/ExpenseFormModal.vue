@@ -5,6 +5,7 @@ import { useSettings } from '../composables/useSettings.js'
 import { useAccounts } from '../composables/useAccounts.js'
 import { initialAccountId } from '../utils/accountsView.js'
 import AccountPicker from './AccountPicker.vue'
+import ReceiptAttach from './ReceiptAttach.vue'
 import { localDayKey, addDays, isDayKey, resolveSavedDate } from '../utils/reporting.js'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog/index.js'
 import { Button } from '@/components/ui/button/index.js'
@@ -33,6 +34,7 @@ const form = reactive({
   note: '',
 })
 
+const staged = ref([]) // receipt files chosen while ADDING (saved by the page right after the expense)
 const today = ref('')
 const yesterday = ref('')
 const addedCount = ref(0)
@@ -67,6 +69,7 @@ watch(
     if (!props.open) return
     error.message = ''
     addedCount.value = 0
+    staged.value = []
     today.value = localDayKey(new Date())
     yesterday.value = addDays(today.value, -1)
     if (props.expense) {
@@ -120,7 +123,9 @@ function submit(another = false) {
     payload.accountId = form.accountId
     if (!props.expense) setLastAccountId(form.accountId)
   }
+  if (!props.expense && staged.value.length) payload.receiptFiles = staged.value
   emit('save', payload, { another: keepOpen })
+  if (!props.expense) staged.value = []
   if (keepOpen) {
     addedCount.value++
     form.amount = ''
@@ -197,6 +202,8 @@ function categoryLabel(id) {
           <Label for="expense-note">Note (optional)</Label>
           <Input id="expense-note" v-model="form.note" type="text" placeholder="What was this for?" autocomplete="off" />
         </div>
+
+        <ReceiptAttach v-model="staged" :expense-id="expense?.id || ''" :receipts="expense?.receipts || []" />
 
         <p v-if="error.message" class="m-0 text-sm text-destructive" role="alert">{{ error.message }}</p>
         <p v-else-if="addedCount" class="m-0 text-sm text-status-good" role="status">Added ({{ addedCount }} so far). Enter the next one.</p>
