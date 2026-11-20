@@ -446,6 +446,13 @@ Additive only; no change to stored expense shape in the first pass.
 - **Not changed on purpose / for later phases:** no ESLint, Vitest or Playwright yet (Phase 2); the browser proofs above are throw-away CDP scripts outside the repo and become Playwright tests in Phase 2; no server routes yet (Phase 3).
 - **Tooling note:** the old app was built for the comparison in a temporary `git worktree` outside the repo, removed afterwards.
 
+### Session 13 - 2026-11-20 (Nuxt migration: Phase 2, repo rules and test harness)
+- **Done:** ESLint (`@nuxt/eslint`, correctness rules only; `eslint.config.mjs`), Vitest for the TypeScript code (`vitest.config.ts`, `tests/`: route table vs the old router, the two inline head scripts, the no-services setup, the load-bearing `nuxt.config.ts` decisions, repository rules; 26 tests), Playwright on the production build (`playwright.config.ts`, `e2e/`: 98 tests: all 21 pages x light/dark x 1280/375px, redirects, startup/migration order, offline, and a self-test of the forbid-real-services guard), `npm run verify` (`scripts/verify.mjs`: build with the sync flag OFF, lint, node tests, Vitest, time zones, e2e, stopping at the first failure), `CLAUDE.md` (rules and gotchas), the two reusable dev tools `scripts/measure/bench.mjs` and `scripts/measure/cutover.mjs`.
+- **Result:** `npm run verify` OK in 151 s (build 25 s, lint 9 s, node 321 tests (320 pass, 1 skip), Vitest 26, four time zones, e2e 98 passed in 96 s). Browser tests fail on any console error/warning or request that leaves this machine.
+- **Real problems the linter found (fixed, no behaviour change):** a computed in `ExpensesView` assigned a ref (side effect in a computed: the range and its error now come from one pure computed); the layout had several root elements (Nuxt layouts need one); two unused variables in `investments.js` and others.
+- **Gotchas recorded in CLAUDE.md:** a lowercase Windows drive letter makes Vitest load two copies of itself (`scripts/run-vitest.mjs` fixes the working directory); `vite preview`/dev-server vs production-build differences; test helpers that create an IndexedDB before the app does; toasts covering buttons at 375px.
+- **Not done yet (later phases):** `e2e/accountMocks.ts` and the two-device tests (Phases 4-5); axe accessibility checks (Phase 8). The earlier per-feature browser scripts (accounts, receipts, goals, ...) were throw-away and are not ported; their behaviours are covered by the node tests and by the Phase 4-7 specs for new work.
+
 ## J. Next recommended action
 
 **Protect your data before the first start of this version (it stamps data version 3):**
