@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button/index.js'
 import { Card, CardContent } from '@/components/ui/card/index.js'
 import TagFormModal from './TagFormModal.vue'
 
-const props = defineProps({
+defineProps({
   open: { type: Boolean, default: false },
 })
 

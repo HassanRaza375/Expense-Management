@@ -12,7 +12,7 @@ export default defineNuxtConfig({
   ssr: false,
   devtools: { enabled: false },
 
-  modules: ["@vite-pwa/nuxt"],
+  modules: ["@vite-pwa/nuxt", "@nuxt/eslint"],
   css: ["~/style.css"],
 
   // D4: the pure code keeps explicit imports. Nothing in app/utils or app/composables is registered as a global, and components are imported by hand.

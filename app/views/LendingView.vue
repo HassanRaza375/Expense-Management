@@ -15,7 +15,7 @@ import LoanFormModal from '../components/LoanFormModal.vue'
 
 const router = useRouter()
 const { settings } = useSettings()
-const { loans, loansByDirection, addLoan, deleteLoan, undoDelete, remaining, status, totalOutstanding } = useLending()
+const { loansByDirection, addLoan, deleteLoan, undoDelete, remaining, status, totalOutstanding } = useLending()
 
 const modalOpen = ref(false)
 const modalDirection = ref('lent')

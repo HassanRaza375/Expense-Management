@@ -121,16 +121,15 @@ const cycleSelection = computed(() => {
 const periodSelection = computed(() => (period.value === 'custom' ? { id: 'custom', start: customStart.value, end: customEnd.value } : period.value))
 
 // All date logic lives in reporting.js. If it ever rejects the inputs we show the error and fall back to everything.
-const filterError = ref('')
-const resolved = computed(() => {
-  filterError.value = ''
+const resolution = computed(() => {
   try {
-    return resolveFilters({ period: periodSelection.value, cycle: cycleSelection.value, now: now.value, resetDay: resetDay.value })
+    return { range: resolveFilters({ period: periodSelection.value, cycle: cycleSelection.value, now: now.value, resetDay: resetDay.value }), error: '' }
   } catch (err) {
-    filterError.value = err?.message || 'Invalid filter'
-    return resolveFilters({ now: now.value })
+    return { range: resolveFilters({ now: now.value }), error: err?.message || 'Invalid filter' }
   }
 })
+const resolved = computed(() => resolution.value.range)
+const filterError = computed(() => resolution.value.error)
 
 const filtered = computed(() =>
   filterError.value

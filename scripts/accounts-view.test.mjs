@@ -377,7 +377,7 @@ test('the Accounts screens hold no money maths: they use useAccounts + accountsV
     const text = readFileSync(fileURLToPath(new URL(f, root)), 'utf8')
     assert.doesNotMatch(text, /from '\.\.\/utils\/accounts\.js'/, `${f} must not do account maths itself`)
     assert.doesNotMatch(text, /\.reduce\(/, `${f} must not sum amounts`)
-    assert.doesNotMatch(text, /openingBalance\s*[+\-]|running\s*[+\-]=/, `${f} must not compute balances`)
+    assert.doesNotMatch(text, /openingBalance\s*[+-]|running\s*[+-]=/, `${f} must not compute balances`)
     assert.doesNotMatch(text, /useBudget|computeBudget|localStorage/, `${f} must not touch budget or storage directly`)
     // One list of "records that move money" lives in useAccounts().records(); a screen that assembled its own list once
     // forgot a record kind (investments) and showed a wrong ledger, so the screens may not import those stores at all.
@@ -387,7 +387,7 @@ test('the Accounts screens hold no money maths: they use useAccounts + accountsV
 
 // ---- Phase 2.4: picker + bulk assign ---------------------------------------------------------------------------------
 
-import { accountPickerChoices, initialAccountId, assignmentPlan } from '../app/utils/accountsView.js'
+const { accountPickerChoices, initialAccountId, assignmentPlan } = await import('../app/utils/accountsView.js')
 const acct = (id, openingBalance, openingDate, extra = {}) => ({ id, name: id, type: 'bank', openingBalance, openingDate, archived: false, order: 0, ...extra })
 
 test('accountPickerChoices: empty without accounts (picker hidden); active only; archived kept when it is the record\'s own', () => {

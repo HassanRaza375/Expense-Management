@@ -41,7 +41,7 @@ function mulberry32(seed) {
 test('no withdrawals: current value, profit and return % equal the previous formulas, for many random funds', () => {
   const rnd = mulberry32(7)
   for (let i = 0; i < 300; i++) {
-    const contributions = Array.from({ length: Math.floor(rnd() * 5) }, (_, k) => c(noon(2026, 1 + Math.floor(rnd() * 10), 1 + Math.floor(rnd() * 27)), Math.round(rnd() * 100000) / 100))
+    const contributions = Array.from({ length: Math.floor(rnd() * 5) }, () => c(noon(2026, 1 + Math.floor(rnd() * 10), 1 + Math.floor(rnd() * 27)), Math.round(rnd() * 100000) / 100))
     const valueEntries = Array.from({ length: Math.floor(rnd() * 4) }, () => v(noon(2026, 1 + Math.floor(rnd() * 10), 1 + Math.floor(rnd() * 27)), Math.round(rnd() * 300000) / 100))
     const f = fund(contributions, valueEntries)
     const invested = contributions.reduce((s, x) => s + x.amount, 0)

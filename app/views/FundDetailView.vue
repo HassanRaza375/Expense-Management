@@ -32,7 +32,6 @@ const {
   changeSinceLast,
   sortedValueEntries,
   sortedContributions,
-  valueHistory,
   addValueEntry,
   updateValueEntry,
   deleteValueEntry,

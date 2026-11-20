@@ -34,6 +34,7 @@ const pendingRecurringCount = computed(() => {
 </script>
 
 <template>
+  <div>
   <Toaster />
   <PwaUpdateToast />
   <LockView v-if="!lockState.isUnlocked" />
@@ -50,5 +51,6 @@ const pendingRecurringCount = computed(() => {
         <slot />
       </main>
     </div>
+  </div>
   </div>
 </template>

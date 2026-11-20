@@ -60,24 +60,19 @@ export function performance(fund, { asOf = null } = {}) {
   let estC = 0 // estimated value, used only to size a withdrawal's share of the holding
   let realizedC = 0
   let lastEntry = null
-  let lastEntryIndex = -1
   let withdrawnAfterEntryC = 0
-  let contributedAfterEntryC = 0
 
   const seq = events(fund).filter((e) => within(e.record))
-  seq.forEach((e, i) => {
+  seq.forEach((e) => {
     const amountC = toCents(e.record.amount)
     if (e.kind === 'contribution') {
       investedC += amountC
       costC += amountC
       estC += amountC
-      contributedAfterEntryC += amountC
     } else if (e.kind === 'value') {
       lastEntry = e.record
-      lastEntryIndex = i
       estC = toCents(e.record.value)
       withdrawnAfterEntryC = 0
-      contributedAfterEntryC = 0
     } else {
       withdrawnC += amountC
       let removedC

@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { computeBudget, toDateCycle, statusForPercent, sanitizeResetDay, cycleDayProgress, cycleIncome, incomeOverview } from '../app/utils/budgetMath.js'
+import { computeBudget, toDateCycle, statusForPercent, sanitizeResetDay, cycleDayProgress } from '../app/utils/budgetMath.js'
 import {
   localDayKey,
   filterTransactions,

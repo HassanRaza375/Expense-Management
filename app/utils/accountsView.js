@@ -106,7 +106,7 @@ export function describeRow(row, lookups = {}) {
   const incomeLabel = (t) => (lookups.incomeLabel ? lookups.incomeLabel(t) : '') || ''
   const accountName = (id) => (lookups.accountName ? lookups.accountName(id) : '') || 'a deleted account'
   const rec = row.record || {}
-  let title = ''
+  let title
   let subtitle = ''
   switch (row.type) {
     case 'expense':
