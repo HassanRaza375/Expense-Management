@@ -432,6 +432,12 @@ Additive only; no change to stored expense shape in the first pass.
 - **Harness notes (not app bugs):** a test helper that opened the attachments database before the app created it left it without its object store and broke the first save (the helper now checks the database exists first); my own click on "Reset all data" was intercepted by a toast at 375px (used the button's own click). Earlier in Session 9 the scenarios failed against the Vite DEV server after heavy editing (duplicate module copies) and passed against the production build: run browser checks against `npm run build` + `vite preview`.
 - **Not verified:** a real phone camera/HEIC, other browsers, very many large receipts, the owner's real data. Receipts commit pending.
 
+### Session 11 - 2026-11-20 (Nuxt migration: Phase 0, analysis and plan, docs only)
+- **Instruction:** the owner pasted a multi-phase brief (Nuxt 4 SPA, accounts, Postgres sync, profile photo, Cloudinary receipts, admin panel) to be done on a new branch `nuxt-migration`, never merged or deployed. `.env` exists (gitignored, never opened) with only `CLOUDINARY_URL`, `DATABASE_URL`, `NUXT_PUBLIC_SYNC_ENABLED`; `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `DATABASE_CA_CERT`/`DATABASE_CA_FILE` and `ADMIN_SEED_EMAIL`/`ADMIN_SEED_PASSWORD` are missing (affects live checks).
+- **Phase 0 done:** `docs/NUXT_PLAN.md` (baseline, full storage inventory with sync classes, page list with offline levels, Postgres schema, sync collections, risks, order of work) and `docs/DECISIONS.md` (D1-D30). Reference app read: `C:UsersHPDocumentsGitHubQuranApp` (read-only; its `.env` was not read).
+- **Baseline:** `npm test` 321 (320 pass, 1 intentional skip); `npm run test:tz` 295 per zone (New York skips 6 documented tests); `npm run build` passes (123 precache entries, 2114 KiB). Node 24.22.1 / npm 11.6.2.
+- **Branch:** `nuxt-migration` (from `main` at `e9923ef`, which only added `future.md`).
+
 ## J. Next recommended action
 
 **Protect your data before the first start of this version (it stamps data version 3):**
