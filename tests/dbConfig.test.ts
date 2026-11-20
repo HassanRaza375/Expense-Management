@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { DbConfigError, POOL, dbFailureLine, describeDbError, normaliseCa, poolConfig, resolveCa } from "../server/utils/dbConfig";
+import { DbConfigError, POOL, dbFailureLine, describeDbError, normaliseCa, poolConfig, resolveCa, schemaOf } from "../server/utils/dbConfig";
 
 const PEM = "-----BEGIN CERTIFICATE-----\nMIIBfake\n-----END CERTIFICATE-----";
 const URL_WITH_SSL = "postgres://app_user:p%40ss%2Fword@db-host-1.example.aivencloud.com:12345/hisaab_test?sslmode=require&connect_timeout=5";
@@ -55,6 +55,39 @@ describe("normaliseCa / resolveCa", () => {
       expect(e).toBeInstanceOf(DbConfigError);
       expect(String((e as Error).message)).not.toContain("/secret/place");
     }
+  });
+});
+
+describe("a certificate pasted in a different shape is still verified the same way", () => {
+  const BODY = "MIIBfake".repeat(40); // a bare base64 body, as some dashboards copy it (no BEGIN/END lines)
+
+  it("wraps a bare base64 body as PEM", () => {
+    const pem = normaliseCa(BODY);
+    expect(pem.startsWith("-----BEGIN CERTIFICATE-----\n")).toBe(true);
+    expect(pem.trimEnd().endsWith("-----END CERTIFICATE-----")).toBe(true);
+    expect(pem.replace(/-----[A-Z ]+-----|\s/g, "")).toBe(BODY);
+    expect(poolConfig(URL_WITH_SSL, BODY).ssl).toEqual({ ca: pem, rejectUnauthorized: true });
+  });
+
+  it("treats certificate text in DATABASE_CA_FILE as the certificate, and a real path as a path", () => {
+    const read = (p: string) => `file:${p}`;
+    expect(resolveCa({ DATABASE_CA_FILE: BODY }, read)).toBe(BODY);
+    expect(resolveCa({ DATABASE_CA_FILE: PEM }, read)).toBe(PEM);
+    expect(resolveCa({ DATABASE_CA_FILE: "C:\\certs\\aiven-ca.pem" }, read)).toBe("file:C:\\certs\\aiven-ca.pem");
+  });
+
+  it("still refuses text that is neither a path nor a certificate", () => {
+    expect(() => poolConfig(URL_WITH_SSL, "hello world")).toThrow(DbConfigError);
+  });
+});
+
+describe("schemaOf (the test run's own schema in a shared database)", () => {
+  it("reads a plain identifier from ?schema= and ignores everything else", () => {
+    expect(schemaOf("postgres://u:p@h:1/db?schema=hisaab_test")).toBe("hisaab_test");
+    expect(schemaOf("postgres://u:p@h:1/db")).toBeUndefined();
+    expect(schemaOf("postgres://u:p@h:1/db?schema=")).toBeUndefined();
+    for (const bad of ["a;drop table x", "a b", "1abc", "a-b", 'a"b', "x".repeat(64)]) expect(schemaOf(`postgres://u:p@h:1/db?schema=${encodeURIComponent(bad)}`), bad).toBeUndefined();
+    expect(schemaOf("not a url")).toBeUndefined();
   });
 });
 

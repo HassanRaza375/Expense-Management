@@ -23,16 +23,29 @@ export class DbConfigError extends Error {
   code = "DB_CA_INVALID";
 }
 
-/** PEM text as pasted into an environment variable: real newlines, or `\n` escapes when the dashboard kept it on one line. */
+/** The bare base64 body of a certificate (what some dashboards copy, with no BEGIN/END lines). */
+const BARE_BASE64 = /^[A-Za-z0-9+/=\s]{200,}$/;
+
+/** True when the text IS a certificate (PEM, or its bare base64 body) and not a file path. */
+export const looksLikeCertText = (v: string): boolean => /-----BEGIN CERTIFICATE-----/.test(v) || BARE_BASE64.test(v.trim());
+
+/** PEM text as pasted into an environment variable: real newlines, `\n` escapes when the dashboard kept it on one line, or just the base64 body (it is wrapped as PEM). */
 export function normaliseCa(ca: string): string {
   const text = ca.includes("\n") ? ca : ca.replace(/\\n/g, "\n");
-  return text.replace(/\r\n/g, "\n").trim() + "\n";
+  const pem = text.replace(/\r\n/g, "\n").trim();
+  if (!pem.includes("-----BEGIN") && BARE_BASE64.test(pem)) {
+    const body = pem.replace(/\s+/g, "");
+    return `-----BEGIN CERTIFICATE-----\n${body.match(/.{1,64}/g)!.join("\n")}\n-----END CERTIFICATE-----\n`;
+  }
+  return pem + "\n";
 }
 
 /** The CA from the environment: `DATABASE_CA_CERT` (the PEM text) or `DATABASE_CA_FILE` (a path, read by `readFile`). Undefined when neither is set. */
 export function resolveCa(env: Record<string, string | undefined>, readFile: (path: string) => string): string | undefined {
   if (env.DATABASE_CA_CERT) return env.DATABASE_CA_CERT;
   if (env.DATABASE_CA_FILE) {
+    // the certificate itself pasted where a path was expected: accept it (it is verified exactly the same way)
+    if (looksLikeCertText(env.DATABASE_CA_FILE)) return env.DATABASE_CA_FILE;
     try {
       return readFile(env.DATABASE_CA_FILE);
     } catch {
@@ -40,6 +53,16 @@ export function resolveCa(env: Record<string, string | undefined>, readFile: (pa
     }
   }
   return undefined;
+}
+
+/** The PostgreSQL schema asked for with `?schema=name` in the URL (Prisma's own convention; keeps the test run apart from other tables in a shared database). Undefined when absent or not a plain identifier. */
+export function schemaOf(url: string): string | undefined {
+  try {
+    const s = new URL(url).searchParams.get("schema");
+    return s && /^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(s) ? s : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
