@@ -17,13 +17,13 @@ globalThis.localStorage = {
 }
 installFakeIndexedDB()
 
-const { useExpenses } = await import('../src/composables/useExpenses.js')
-const { useBills, useConnections } = await import('../src/composables/useBills.js')
-const { useMeterReadings } = await import('../src/composables/useMeterReadings.js')
-const { getAttachment, getAllAttachments, putAttachment, deleteAttachment } = await import('../src/utils/attachments.js')
-const { buildBackup, parseBackup, applyBackup } = await import('../src/utils/backup.js')
-const { saveSnapshot, listSnapshots, clearSnapshots, MAX_SNAPSHOTS } = await import('../src/utils/snapshots.js')
-const { localNoonISO } = await import('../src/utils/reporting.js')
+const { useExpenses } = await import('../app/composables/useExpenses.js')
+const { useBills, useConnections } = await import('../app/composables/useBills.js')
+const { useMeterReadings } = await import('../app/composables/useMeterReadings.js')
+const { getAttachment, getAllAttachments, putAttachment, deleteAttachment } = await import('../app/utils/attachments.js')
+const { buildBackup, parseBackup, applyBackup } = await import('../app/utils/backup.js')
+const { saveSnapshot, listSnapshots, clearSnapshots, MAX_SNAPSHOTS } = await import('../app/utils/snapshots.js')
+const { localNoonISO } = await import('../app/utils/reporting.js')
 
 const ex = useExpenses()
 const billsApi = useBills()
@@ -37,7 +37,7 @@ const readBytes = async (entry) => [...new Uint8Array(await entry.blob.arrayBuff
 
 async function billWithAttachments({ reading = 1234 } = {}) {
   month++
-  const bill = billsApi.addBill({ connectionId: conn.id, billingMonth: `2026-${String(month).padStart(2, '0')}`, dueDate: '2026-12-20', amount: 2000, currentReading: reading })
+  const bill = billsApi.addBill({ connectionId: conn.id, billingMonth: `2026-${String(month).padStart(2, '0')}`, dueDate: '2099-12-20', amount: 2000, currentReading: reading })
   const live = billsApi.findBill(bill.id)
   await billsApi.addAttachment(live, file('front.png', 'image/png', bytes(1, 2, 3, 4)), 'billFront')
   await billsApi.addAttachment(live, file('bill.pdf', 'application/pdf', bytes(9, 8, 7)), 'pdf')
@@ -122,7 +122,7 @@ test('restoring twice does not duplicate anything; deleting an unknown bill retu
 
 test('a bill with no files, no reading and no payment deletes and restores cleanly', async () => {
   month++
-  const bill = billsApi.addBill({ connectionId: conn.id, billingMonth: '2026-12', dueDate: '2026-12-20', amount: 10 })
+  const bill = billsApi.addBill({ connectionId: conn.id, billingMonth: '2026-12', dueDate: '2099-12-20', amount: 10 })
   const snapshot = await billsApi.deleteBill(bill.id)
   assert.deepEqual([snapshot.files.length, snapshot.readings.length, snapshot.expenseIds.length], [0, 0, 0])
   assert.deepEqual(await billsApi.restoreBill(snapshot), { restoredFiles: 0, failedFiles: 0 })

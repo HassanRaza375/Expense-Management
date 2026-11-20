@@ -14,8 +14,8 @@ globalThis.localStorage = {
   clear: () => store.clear(),
 }
 
-const { performance, valueAt, fundSeries, portfolioPerformance } = await import('../src/utils/investments.js')
-const { useInvestments } = await import('../src/composables/useInvestments.js')
+const { performance, valueAt, fundSeries, portfolioPerformance } = await import('../app/utils/investments.js')
+const { useInvestments } = await import('../app/composables/useInvestments.js')
 
 const noon = (y, m, d) => new Date(y, m - 1, d, 12).toISOString()
 let seq = 0

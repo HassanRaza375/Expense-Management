@@ -4,10 +4,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { netWorthAt, netWorthSeries, unlinkedInvestmentCount, cashFlowByCycle } from '../src/utils/netWorth.js'
-import { accountsOverview } from '../src/utils/accounts.js'
-import { computeBudget, cycleIncome } from '../src/utils/budgetMath.js'
-import { summarize, currentCycle } from '../src/utils/reporting.js'
+import { netWorthAt, netWorthSeries, unlinkedInvestmentCount, cashFlowByCycle } from '../app/utils/netWorth.js'
+import { accountsOverview } from '../app/utils/accounts.js'
+import { computeBudget, cycleIncome } from '../app/utils/budgetMath.js'
+import { summarize, currentCycle } from '../app/utils/reporting.js'
 
 const noon = (y, m, d) => new Date(y, m - 1, d, 12).toISOString()
 const NOW = new Date(2026, 10, 20, 12) // 20 Nov 2026
@@ -141,6 +141,6 @@ test('cashFlowByCycle works for reset days 29-31 (no overlapping or skipped cycl
 })
 
 test('the overview module never reads the app state: it imports only pure modules', () => {
-  const src = readFileSync(fileURLToPath(new URL('../src/utils/netWorth.js', import.meta.url)), 'utf8')
+  const src = readFileSync(fileURLToPath(new URL('../app/utils/netWorth.js', import.meta.url)), 'utf8')
   assert.doesNotMatch(src, /from 'vue'|useAccounts|storage\.js|localStorage/)
 })

@@ -16,8 +16,8 @@ globalThis.localStorage = {
   clear: () => store.clear(),
 }
 
-const { useExpenses } = await import('../src/composables/useExpenses.js')
-const { useSettings } = await import('../src/composables/useSettings.js')
+const { useExpenses } = await import('../app/composables/useExpenses.js')
+const { useSettings } = await import('../app/composables/useSettings.js')
 
 const api = useExpenses()
 const base = { date: '2026-11-02T07:00:00.000Z', amount: 100, categoryId: 'cat-food', note: 'x' }

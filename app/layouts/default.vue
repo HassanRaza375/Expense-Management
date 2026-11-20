@@ -2,17 +2,18 @@
 import { computed, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 import { Menu } from '@lucide/vue'
-import { useAppLock } from './composables/useAppLock.js'
-import { useSettings } from './composables/useSettings.js'
-import { useRecurring } from './composables/useRecurring.js'
-import { useSidebar } from './composables/useSidebar.js'
-import { currentCycle } from './utils/reporting.js'
-import { toDateCycle, sanitizeResetDay } from './utils/budgetMath.js'
-import { ensureMeta } from './utils/storage.js'
-import { Toaster } from './components/ui/sonner/index.js'
-import { Button } from './components/ui/button/index.js'
-import AppSidebar from './components/AppSidebar.vue'
-import LockView from './views/LockView.vue'
+import { useAppLock } from '../composables/useAppLock.js'
+import { useSettings } from '../composables/useSettings.js'
+import { useRecurring } from '../composables/useRecurring.js'
+import { useSidebar } from '../composables/useSidebar.js'
+import { currentCycle } from '../utils/reporting.js'
+import { toDateCycle, sanitizeResetDay } from '../utils/budgetMath.js'
+import { ensureMeta } from '../utils/storage.js'
+import { Toaster } from '../components/ui/sonner/index.js'
+import { Button } from '../components/ui/button/index.js'
+import AppSidebar from '../components/AppSidebar.vue'
+import LockView from '../views/LockView.vue'
+import PwaUpdateToast from '../components/PwaUpdateToast.vue'
 
 ensureMeta()
 
@@ -34,6 +35,7 @@ const pendingRecurringCount = computed(() => {
 
 <template>
   <Toaster />
+  <PwaUpdateToast />
   <LockView v-if="!lockState.isUnlocked" />
   <div v-else class="flex min-h-screen">
     <AppSidebar :pending-recurring-count="pendingRecurringCount" />
@@ -45,7 +47,7 @@ const pendingRecurringCount = computed(() => {
         <span class="font-display text-base font-semibold">{{ route.meta.title }}</span>
       </header>
       <main class="min-w-0 flex-1 p-4 md:p-8">
-        <RouterView />
+        <slot />
       </main>
     </div>
   </div>

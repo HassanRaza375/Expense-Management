@@ -16,11 +16,11 @@ globalThis.localStorage = {
 }
 installFakeIndexedDB()
 
-const { validateReceiptFile, receiptStats, exportableAttachments, formatBytes, MAX_RECEIPT_BYTES, MAX_RECEIPTS_PER_EXPENSE } = await import('../src/utils/receipts.js')
-const { useExpenses } = await import('../src/composables/useExpenses.js')
-const { getAllAttachments, getAttachment, deleteAttachment, clearAllAttachments } = await import('../src/utils/attachments.js')
-const { buildBackup, parseBackup, applyBackup } = await import('../src/utils/backup.js')
-const { shrinkReceiptImage } = await import('../src/utils/receiptImage.js')
+const { validateReceiptFile, receiptStats, exportableAttachments, formatBytes, MAX_RECEIPT_BYTES, MAX_RECEIPTS_PER_EXPENSE } = await import('../app/utils/receipts.js')
+const { useExpenses } = await import('../app/composables/useExpenses.js')
+const { getAllAttachments, getAttachment, deleteAttachment, clearAllAttachments } = await import('../app/utils/attachments.js')
+const { buildBackup, parseBackup, applyBackup } = await import('../app/utils/backup.js')
+const { shrinkReceiptImage } = await import('../app/utils/receiptImage.js')
 
 const ex = useExpenses()
 const base = { date: '2026-11-02T07:00:00.000Z', amount: 100, categoryId: 'cat-food', note: 'x' }

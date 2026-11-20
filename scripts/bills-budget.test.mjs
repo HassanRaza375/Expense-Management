@@ -17,12 +17,12 @@ globalThis.localStorage = {
   clear: () => store.clear(),
 }
 
-const { useExpenses } = await import('../src/composables/useExpenses.js')
-const { useBills, useConnections } = await import('../src/composables/useBills.js')
-const { useBudget } = await import('../src/composables/useBudget.js')
-const { useIncome } = await import('../src/composables/useIncome.js')
-const { useSettings } = await import('../src/composables/useSettings.js')
-const { localNoonISO, filterTransactions, summarize, localDayKey } = await import('../src/utils/reporting.js')
+const { useExpenses } = await import('../app/composables/useExpenses.js')
+const { useBills, useConnections } = await import('../app/composables/useBills.js')
+const { useBudget } = await import('../app/composables/useBudget.js')
+const { useIncome } = await import('../app/composables/useIncome.js')
+const { useSettings } = await import('../app/composables/useSettings.js')
+const { localNoonISO, filterTransactions, summarize, localDayKey } = await import('../app/utils/reporting.js')
 
 const ex = useExpenses()
 const billsApi = useBills()
@@ -34,7 +34,7 @@ let month = 0
 
 function newBill(amount = 1500) {
   month++
-  return billsApi.addBill({ connectionId: conn.id, billingMonth: `2026-${String(month).padStart(2, '0')}`, dueDate: '2026-11-20', amount, arrears: 0 })
+  return billsApi.addBill({ connectionId: conn.id, billingMonth: `2026-${String(month).padStart(2, '0')}`, dueDate: '2099-12-20', amount, arrears: 0 })
 }
 const payment = { paidDate: noon(2026, 11, 7), paidBy: 'me', paymentMethod: 'cash', transactionReference: 'REF1', categoryId: 'cat-bills' }
 
@@ -224,8 +224,8 @@ test('useBudget (Dashboard + Budget) and the Expenses page agree on net spent, w
 
 test('Settings and the Expenses page share ONE CSV exporter (no second copy of the format)', () => {
   const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
-  const settings = read('../src/views/SettingsView.vue')
-  const expensesView = read('../src/views/ExpensesView.vue')
+  const settings = read('../app/views/SettingsView.vue')
+  const expensesView = read('../app/views/ExpensesView.vue')
   assert.match(settings, /downloadTransactionsCsv\(/)
   assert.match(expensesView, /downloadTransactionsCsv\(/)
   for (const src of [settings, expensesView]) {
@@ -233,13 +233,13 @@ test('Settings and the Expenses page share ONE CSV exporter (no second copy of t
     assert.doesNotMatch(src, /type: 'text\/csv/, 'no own CSV Blob')
     assert.doesNotMatch(src, /transactionsToCsv\(/, 'only the shared exporter builds CSV')
   }
-  const exporter = read('../src/utils/csvExport.js')
+  const exporter = read('../app/utils/csvExport.js')
   assert.match(exporter, /transactionsToCsv\(/)
 })
 
 test('no page still uses the old UTC-slice grouping or the overflowing getAdjacentCycle for the Dashboard/Budget', () => {
   const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
-  for (const f of ['../src/views/DashboardView.vue', '../src/views/BudgetView.vue', '../src/composables/useBudget.js', '../src/composables/useExpenses.js']) {
+  for (const f of ['../app/views/DashboardView.vue', '../app/views/BudgetView.vue', '../app/composables/useBudget.js', '../app/composables/useExpenses.js']) {
     const src = read(f)
     assert.doesNotMatch(src, /getAdjacentCycle|groupedByWeek|groupedByMonth|groupedByDay|\.slice\(0, 10\)/, f)
   }
