@@ -1,6 +1,8 @@
 # Hisaab — Product Documentation
 
 **A personal, offline-first expense ledger.**
+> **Note (Nuxt migration):** the app is now a Nuxt 4 SPA and its source lives in `app/` (it was `src/`); routes come from `app/lib/routes.ts`. Sections below that say Vite, `src/`, `vite.config.js` or `main.js` describe the original build. Current structure and reasons: `docs/NUXT_PLAN.md`, `docs/DECISIONS.md`, `HISAAB_PROGRESS.md`.
+
 Vue 3 (Composition API) + Vite · Tailwind CSS + shadcn-vue · vue-router · ApexCharts · localStorage only · No backend, no sync, single user.
 
 > **Build status:** all 12 modules below are implemented and running. This doc was written as the up-front spec; it's left as-is except for a few inline notes flagging where the build diverges, plus two revisions layered on after the initial build (a shadcn-vue/Tailwind redesign, then route-based navigation + a responsive/mobile layout). **See [§16](#16-implementation-status) for the full status list, including three known gaps** where behavior doesn't yet match this spec.

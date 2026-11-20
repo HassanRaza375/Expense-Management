@@ -11,7 +11,7 @@ Decisions and their reasons are in `docs/DECISIONS.md`; the tracker is `HISAAB_P
 | `npm run test:tz` (UTC, Asia/Karachi, America/New_York, Pacific/Auckland) | 295 tests per zone; UTC, Karachi and Auckland all pass; New York skips 6 old-date-picker-format tests (documented, G17) |
 | `npm run build` (Vite 5) | passes; 123 precache entries, 2114 KiB; `dist` 2.4 MB; one chunk > 500 kB warning (ApexCharts), old |
 | Node / npm on this machine | Node 24.22.1, npm 11.6.2 |
-| Startup time (to be measured in Phase 1 on the OLD production build, then again after) | recorded in `HISAAB_PROGRESS.md` when measured |
+| Startup time: dashboard content, 300 expenses, cold profile, headless Chrome, interleaved A/B, 12 runs | OLD Vite build median 580 ms (504-687); NEW Nuxt build (Phase 1) 563 ms (539-669) |
 
 Reference project (read-only): `C:\Users\HP\Documents\GitHub\QuranApp` (Nuxt 4 + Prisma 7.10.1 + Better Auth 1.7.16). Pins to reuse exactly:
 `nuxt ^4.6.1`, `prisma`/`@prisma/client`/`@prisma/adapter-pg` **7.10.1** (a bare `npm install prisma` installs an 8.0 release candidate),
