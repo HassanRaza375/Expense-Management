@@ -58,6 +58,10 @@ export default defineNuxtConfig({
     },
   },
 
+  // The sync flag. It is PUBLIC and not a secret, and Nuxt overrides this default from NUXT_PUBLIC_SYNC_ENABLED (at build time for the prerendered shell, and at request time
+  // on the server). It must be off in a build until the owner turns it on (docs/DEPLOY.md). Secrets never go here: they are read from the environment at request time.
+  runtimeConfig: { public: { syncEnabled: false } },
+
   nitro: {
     // The SPA shell is prerendered once (index.html) so the service worker can precache it: offline, every navigation falls back to it (D6).
     prerender: { routes: ["/"], crawlLinks: false },

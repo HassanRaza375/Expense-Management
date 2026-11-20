@@ -63,3 +63,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .cache
 .env.*
 !.env.example
+
+# Prisma generated client
+/server/generated

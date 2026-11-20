@@ -131,7 +131,7 @@ model SyncDoc {                       // one row per record
 }
 model SyncCursor { userId @id, revision BigInt, bytes Int }     // per-user revision counter, locked FOR UPDATE inside each push
 model AuditLog   { id, at, actorId, action, targetType, targetId, summary Json /* before/after summary, no notes */ }
-model Receipt    { userId, id, expenseId, publicId, bytes, mimeType, createdAt, deletedAt }   // metadata only; the file is private on Cloudinary
+// Receipts are NOT a separate table: a receipt is a SyncDoc in collection "receipt" (parentId = the expense id, sizeBytes = file size; data holds publicId, mime type, name), so it syncs, tombstones and is counted like every other record. The file itself is private on Cloudinary.
 // Better Auth models: User (+ role "user"|"superadmin", avatarPublicId, avatarVersion, disabled), Session, Account, Verification, RateLimit
 ```
 
