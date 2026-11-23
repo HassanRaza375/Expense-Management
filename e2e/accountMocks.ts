@@ -59,6 +59,8 @@ export interface FakeServer {
   repo: ReturnType<typeof fakeSyncRepo>;
   /** every sync request that reached the fake server, "METHOD path" */
   syncCalls: string[];
+  /** answer every sync request as if this app were older than the server (409 schema_mismatch) */
+  forceSchemaMismatch: boolean;
 }
 
 /** One browser (a device) of a test: its own storage, and a switch that cuts only its own network. */
@@ -69,7 +71,7 @@ export interface DeviceNet {
 }
 
 export function fakeServer(over: Partial<FakeServer> = {}): FakeServer {
-  return { users: new Map(), session: null, features: { google: false, email: false, passwordMin: 10 }, requests: [], offline: false, down: null, rateLimitSignIn: false, lastPhoto: null, signUpNeedsVerification: false, repo: fakeSyncRepo(), syncCalls: [], ...over };
+  return { users: new Map(), session: null, features: { google: false, email: false, passwordMin: 10 }, requests: [], offline: false, down: null, rateLimitSignIn: false, lastPhoto: null, signUpNeedsVerification: false, repo: fakeSyncRepo(), syncCalls: [], forceSchemaMismatch: false, ...over };
 }
 
 /** The fields the fake server reads from a request body. */
@@ -143,7 +145,7 @@ export async function installFakeAccountServer(page: Page, server: FakeServer = 
     if (path.startsWith("/api/sync/")) {
       server.syncCalls.push(`${m} ${path}`);
       const h = req.headers();
-      if (h["x-hisaab-schema"] !== "3") return json(409, { error: "schema_mismatch" });
+      if (server.forceSchemaMismatch || h["x-hisaab-schema"] !== "3") return json(409, { error: "schema_mismatch" });
       if (h["x-hisaab-account"] !== me.id) return json(409, { error: "account_mismatch" });
       try {
         const raw = buf?.toString("utf8") || "{}";

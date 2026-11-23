@@ -9,6 +9,7 @@ import { idbBaseStore } from "../lib/sync/baseStore";
 import { userLocalStore } from "../lib/sync/localStore";
 import { clearHint, clearUserCache, guestRead, guestRecordCount, isReady, markReady, readHint, writeHint } from "../lib/sync/mode";
 import { downloadBackupFile } from "../lib/sync/backupDownload";
+import { singleFlight } from "../lib/sync/singleFlight";
 import { isUserCacheActive, onStorageChange } from "../utils/storage.js";
 import { saveSnapshot } from "../utils/snapshots.js";
 import { accountsEnabled, deleteAccount as deleteServerAccount, signOut as signOutServer, type Profile } from "./useAccount";
@@ -41,7 +42,6 @@ let engine: SyncEngine | null = null;
 let userId: string | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let interval: ReturnType<typeof setInterval> | null = null;
-let running: Promise<void> | null = null;
 let failures = 0;
 let started = false;
 
@@ -79,10 +79,9 @@ function fail(e: unknown) {
   if (kind === "offline" || kind === "rate" || kind === "server") schedule(BACKOFF_MS[Math.min(failures++, BACKOFF_MS.length - 1)]);
 }
 
-/** One run, never two at once (in this tab, and across tabs where the Web Locks API exists). */
-export function syncNow(opts: { allowMassDelete?: boolean } = {}): Promise<void> {
-  if (!engine || !userId) return Promise.resolve();
-  if (running) return running;
+/** One run at a time (in this tab, and across tabs where the Web Locks API exists). A request that arrives during a run is not lost: one more run follows it (singleFlight). */
+const flight = singleFlight(async (opts) => {
+  if (!engine || !userId) return;
   const e = engine;
   const run = async () => {
     state.status = "syncing";
@@ -93,10 +92,13 @@ export function syncNow(opts: { allowMassDelete?: boolean } = {}): Promise<void>
     }
   };
   const locks = (navigator as Navigator & { locks?: LockManager }).locks;
-  running = (locks ? locks.request(`hisaab-sync-${userId}`, { ifAvailable: true }, async (lock) => (lock ? run() : undefined)).then(() => undefined) : run()).finally(() => {
-    running = null;
-  });
-  return running;
+  if (locks) await locks.request(`hisaab-sync-${userId}`, { ifAvailable: true }, async (lock) => (lock ? run() : undefined));
+  else await run();
+});
+
+export function syncNow(opts: { allowMassDelete?: boolean } = {}): Promise<void> {
+  if (!engine || !userId) return Promise.resolve();
+  return flight.request(opts);
 }
 
 function schedule(ms = DEBOUNCE_MS) {
@@ -291,7 +293,8 @@ export async function signOutEverywhere(opts: { discard?: boolean } = {}): Promi
     const n = engine.pending();
     if (n > 0) return { blocked: n };
   }
-  await signOutServer();
+  // Offline (or the server is down): the sign-out on THIS device still goes ahead. The session on the server ends by itself when it expires.
+  await signOutServer().catch(() => undefined);
   await leaveAccountMode(hint?.userId ?? null);
   reload();
   return { blocked: 0 };

@@ -54,6 +54,13 @@ test.describe("accounts turned ON", () => {
     await expect(page.locator("header .font-display")).toHaveText("Account");
   });
 
+  test("the Vault says a lost passphrase cannot be recovered by anyone, and that an account keeps it only as encrypted text", async ({ page }) => {
+    await start(page);
+    await page.goto("/vault");
+    await expect(page.getByTestId("vault-warning")).toContainText("nobody can recover the Vault");
+    await expect(page.getByTestId("vault-warning")).toContainText("only as the encrypted text");
+  });
+
   test("creating an account signs you in; the form checks the password length and says what is not available yet", async ({ page }) => {
     const s = await start(page);
     await page.goto("/account");
@@ -98,6 +105,7 @@ test.describe("accounts turned ON", () => {
     await page.getByLabel("Password").fill(PASSWORD);
     await page.getByTestId("auth-submit").click();
     await expect(page.getByTestId("account-email")).toHaveText(EMAIL);
+    await page.getByTestId("choice-later").click(); // the seeded device has guest data, so the first-sign-in choice opens: "Not now"
     await page.getByTestId("sign-out").click();
     await expect(page.getByTestId("auth-form")).toBeVisible();
     expect(s.session).toBeNull();
@@ -195,8 +203,9 @@ test.describe("accounts turned ON", () => {
     await page.getByLabel("Email").fill(EMAIL);
     await page.getByLabel("Password").fill(PASSWORD);
     await page.getByTestId("auth-submit").click();
+    await page.getByTestId("choice-later").click(); // the seeded device has guest data, so the first-sign-in choice opens: "Not now"
     await expect(page.getByTestId("account-email")).toBeVisible();
-    await page.getByTestId("sign-out").click();
+    await Promise.all([page.waitForEvent("load"), page.getByTestId("sign-out").click()]); // signing out reloads the page into guest mode
     await expect(page.getByTestId("auth-form")).toBeVisible();
     expect(await deviceData(page)).toEqual(before);
   });

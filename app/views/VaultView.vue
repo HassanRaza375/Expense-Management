@@ -4,6 +4,7 @@ import { Lock, Landmark, CreditCard, IdCard, TrendingUp, Trash2, Plus } from '@l
 import { useVault } from '../composables/useVault.js'
 import { formatCurrency } from '../utils/currency.js'
 import { useSettings } from '../composables/useSettings.js'
+import { accountsEnabled } from '../composables/useAccount'
 import MaskedField from '../components/MaskedField.vue'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card/index.js'
 import { Button } from '@/components/ui/button/index.js'
@@ -13,6 +14,7 @@ import { Label } from '@/components/ui/label/index.js'
 const vault = useVault()
 const { settings } = useSettings()
 
+const accountsOn = accountsEnabled()
 const passphrase = ref('')
 const confirmPassphrase = ref('')
 const error = ref('')
@@ -100,6 +102,10 @@ function submitInvestment() {
         </div>
         <p v-if="error" class="m-0 text-sm text-destructive">{{ error }}</p>
         <Button class="w-full" @click="submitPassphrase">{{ vault.session.isSetUp ? 'Unlock' : 'Create Vault' }}</Button>
+        <p class="m-0 text-xs text-muted-foreground" data-testid="vault-warning">
+          Your passphrase is never saved or sent anywhere. If you lose it, nobody can recover the Vault, not even the person who runs this service.
+          <template v-if="accountsOn">With an account, the Vault is kept in your account only as the encrypted text it already is.</template>
+        </p>
       </CardContent>
     </Card>
 

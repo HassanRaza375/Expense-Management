@@ -1,55 +1,8 @@
-import { test as plain, expect, type Page } from "@playwright/test";
-import { addUser, fakeServer, newDevice, type Device, type FakeServer } from "./accountMocks";
-import { seedScript } from "./seed";
+import { test as plain, expect } from "@playwright/test";
+import { addUser, fakeServer, newDevice } from "./accountMocks";
+import { EMAIL, GUEST, EMPTY, addExpense, cacheOf, closeAll, deviceWithUpload, guestOf, liveRows, poke, signIn, status, waitSynced } from "./syncHelpers";
 
-// Sync in real browsers. Every "device" is its own browser context (own localStorage and IndexedDB) talking to ONE in-memory account server that runs the REAL
-// server rules (server/utils/syncService.ts). The build under test has accounts OFF; the helpers switch them on in the browser. Nothing reaches a real service.
-const EMAIL = "reader@example.test";
-const PASSWORD = "a-long-password-1";
-
-const GUEST = seedScript({ theme: "light" }); // a device with data from before it had an account
-const EMPTY = seedScript({ data: false }); // a new device
-
-const status = (page: Page) => page.getByTestId("sync-status");
-const waitSynced = (page: Page) => expect(status(page)).toHaveAttribute("data-status", "synced", { timeout: 20_000 });
-const cacheOf = (page: Page, key: string) =>
-  page.evaluate((k) => {
-    const hint = JSON.parse(localStorage.getItem("hisaab:auth:hint") || "null");
-    const raw = hint ? localStorage.getItem(`hisaab:u:${hint.userId}:${k}`) : null;
-    return raw ? JSON.parse(raw) : null;
-  }, key);
-const guestOf = (page: Page, key: string) => page.evaluate((k) => JSON.parse(localStorage.getItem(`hisaab:${k}`) || "null"), key);
-const liveRows = (server: FakeServer, collection: string) => [...server.repo.state.rows.values()].filter((r) => r.collection === collection && !r.deleted).map((r) => r.id).sort();
-
-async function signIn(page: Page, email = EMAIL) {
-  await page.goto("/account");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByTestId("auth-submit").click();
-}
-
-async function addExpense(page: Page, amount: string, note: string) {
-  await page.goto("/expenses");
-  await page.getByTestId("add-expense").click();
-  await page.locator("#expense-amount").fill(amount);
-  await page.locator("#expense-note").fill(note);
-  await page.getByRole("button", { name: "Add", exact: true }).click();
-  await expect(page.locator("#expense-amount")).toHaveCount(0);
-}
-
-/** Device A signs in with the guest data it already had and uploads it: the usual start of every scenario. */
-async function deviceWithUpload(browser: Parameters<Parameters<typeof plain>[2]>[0]["browser"], server: FakeServer) {
-  const A = await newDevice(browser, server, { initScript: GUEST });
-  await signIn(A.page);
-  await A.page.getByTestId("choice-upload").click();
-  await waitSynced(A.page);
-  return A;
-}
-
-const closeAll = async (...devices: Device[]) => {
-  for (const d of devices) await d.context.close();
-};
-
+// Sync in real browsers: the first sign-in, two devices, and signing out. (The helpers and the fake account server are in syncHelpers.ts and accountMocks.ts.)
 plain.describe("the first sign-in", () => {
   plain("a device with data is offered the choice; uploading copies it, leaves the guest data untouched and starts account mode", async ({ browser }) => {
     const server = fakeServer();
@@ -137,7 +90,7 @@ plain.describe("two devices", () => {
     await addExpense(A.page, "250", "Coffee with Sara");
     await waitSynced(A.page);
     await expect(B.page.getByText("Coffee with Sara", { exact: true })).toHaveCount(0);
-    await B.page.evaluate(() => window.dispatchEvent(new Event("online"))); // the page learns of the change when it syncs: on focus, on reconnecting, every minute
+    await poke(B.page);
     await expect(B.page.getByText("Coffee with Sara", { exact: true })).toBeVisible({ timeout: 15_000 });
     expect(A.problems).toEqual([]);
     expect(B.problems).toEqual([]);
@@ -161,11 +114,11 @@ plain.describe("two devices", () => {
     await expect(status(A.page)).toContainText("waiting");
     expect(liveRows(server, "expense")).toHaveLength(3);
     A.net.offline = false;
-    await A.page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await poke(A.page);
     await waitSynced(A.page);
     expect(liveRows(server, "expense")).toHaveLength(4);
     await B.page.goto("/expenses");
-    await B.page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await poke(B.page);
     await expect(B.page.getByText("Offline lunch", { exact: true })).toBeVisible({ timeout: 15_000 });
     await closeAll(A, B);
   });

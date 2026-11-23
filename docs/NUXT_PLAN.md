@@ -149,8 +149,10 @@ All monthly and yearly admin totals group by `dayKey` (`left(dayKey, 7)` / `left
   (`baseRevision`), the device pulls, merges and pushes again. Client clocks are never compared. Pushes are idempotent (same op twice = same result).
 - **Deletes are tombstones**; Undo of a delete re-creates the record (same id) and the tombstone is superseded by the newer revision.
 - **First sign-in** never merges automatically: offer "Upload this device's data to my account" (snapshot first, Undo) or "Start with my account's data".
-- **Per-user cache**: signed-in data is cached per user id (own namespace in `hisaab-sync`), never mixed with guest data in `hisaab:*`.
-  Signed in, the storage wrapper routes the app's keys to the user's cache; guest mode is byte-for-byte today's behaviour.
+- **Per-user cache**: signed-in data is cached per user id, never mixed with guest data in `hisaab:*`. Signed in, the storage wrapper routes the app's synced keys
+  to the user's cache; guest mode is byte-for-byte today's behaviour. **As built (D39):** the cache is in localStorage under `hisaab:u:<userId>:<key>` (the wrapper is
+  synchronous and composables read it on import); IndexedDB `hisaab-sync` holds only the base copies and the cursor. Sync is state-based (a difference against the base),
+  so there is no separate outbox to lose.
 - A test fails if any localStorage key is neither classified `synced` nor `device-only` (`tests/syncInventory`).
 
 ## 6. Risks (and the mitigation planned)

@@ -84,6 +84,10 @@ try {
   userId = (await pg.query(`SELECT id FROM "User" WHERE email = $1`, [EMAIL])).rows[0]?.id ?? null;
   check("the account is in the database as an ordinary user", (await pg.query(`SELECT role FROM "User" WHERE id = $1`, [userId])).rows[0]?.role === "user");
 
+  // a device with nothing on it starts with the account's data straight away: the page reloads into account mode. Wait for that before touching the page.
+  await page.getByTestId("sync-status").and(page.locator('[data-status="synced"]')).waitFor({ timeout: 30000 });
+  await t("account-email").waitFor();
+
   console.log("profile photo");
   const avatar = t("user-avatar").first();
   check("a generated avatar is shown first", ((await avatar.getAttribute("src")) ?? "").startsWith("data:image/svg+xml"));
@@ -126,6 +130,9 @@ try {
   await t("auth-submit").click();
   await t("account-email").waitFor({ timeout: 15000 });
   check("the new password signs in", true);
+
+  await page.getByTestId("sync-status").and(page.locator('[data-status="synced"]')).waitFor({ timeout: 30000 }); // signing in again reloads into account mode
+  await t("account-email").waitFor();
 
   console.log("the data on this device");
   const before = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("hisaab:") && k !== "hisaab:session-unlocked").length);

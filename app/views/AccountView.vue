@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Cloud, CloudOff, LogOut, Trash2, ImagePlus } from '@lucide/vue'
+import { Cloud, CloudOff, Trash2, ImagePlus } from '@lucide/vue'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card/index.js'
 import { Button } from '@/components/ui/button/index.js'
 import { Input } from '@/components/ui/input/index.js'
@@ -12,7 +12,9 @@ import UserAvatar from '../components/UserAvatar.vue'
 import AvatarCropDialog from '../components/AvatarCropDialog.vue'
 import { friendly } from '../lib/account/api'
 import { accountsEnabled, useAccount, refresh, signIn, signUp, signInWithGoogle, updateName, changePassword, uploadAvatar, removeAvatar } from '../composables/useAccount'
-import { beginFirstSignIn, resumeChoice, signOutEverywhere, deleteAccountEverywhere } from '../composables/useSync'
+import SignOutControls from '../components/SignOutControls.vue'
+import { beginFirstSignIn, resumeChoice, deleteAccountEverywhere } from '../composables/useSync'
+import { readHint } from '../lib/sync/mode'
 import { isUserCacheActive } from '../utils/storage.js'
 
 // Your account. Guest mode (no account) is the app as it always was: everything stays on this device. An account is optional.
@@ -129,18 +131,10 @@ function savePassword() {
   })
 }
 
-// Sign out. In account mode this removes the account's copy from this device (the account keeps its own); if changes have not reached the account yet it asks first.
-const leaveBlocked = ref(0)
-function leave(discard = false) {
-  guarded(async () => {
-    const r = await signOutEverywhere({ discard })
-    leaveBlocked.value = r.blocked
-  })
-}
-
 // Signed in, but this device has not finished the first-sign-in choice (the person chose "Not now")
 const needsSetup = computed(() => account.status === 'signedIn' && !!account.profile && !isUserCacheActive())
 const inAccountMode = isUserCacheActive()
+const hintEmail = readHint()?.email ?? ''
 
 const confirmEmail = ref('')
 const canDelete = computed(() => account.profile && confirmEmail.value.trim().toLowerCase() === account.profile.email.toLowerCase())
@@ -166,6 +160,10 @@ function removeAccount() {
             Hisaab keeps working on this device with everything you have saved here.
           </p>
           <div><Button variant="outline" size="sm" @click="refresh()">Try again</Button></div>
+          <div v-if="inAccountMode" class="flex flex-col gap-2 border-t border-border pt-3">
+            <p class="m-0 text-xs text-muted-foreground">This device is set up for {{ hintEmail }}. Your changes are saved here and go up when you are back online.</p>
+            <SignOutControls />
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -276,16 +274,7 @@ function removeAccount() {
           <CardTitle class="text-base">Sign out</CardTitle>
           <CardDescription>{{ inAccountMode ? "Ends the session and removes your account's copy from this device (your account keeps its own). The data you had on this device before signing in comes back." : 'Ends the session on this device. The data on this device stays.' }}</CardDescription>
         </CardHeader>
-        <CardContent class="flex flex-col gap-3">
-          <div v-if="leaveBlocked" class="flex flex-col gap-2 rounded-md border border-destructive/50 p-3" data-testid="leave-blocked" role="alert">
-            <p class="m-0 text-sm">{{ leaveBlocked }} change{{ leaveBlocked === 1 ? ' has' : 's have' }} not reached your account yet (you may be offline). Signing out now would lose {{ leaveBlocked === 1 ? 'it' : 'them' }}.</p>
-            <div class="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" data-testid="leave-stay" @click="leaveBlocked = 0">Stay signed in</Button>
-              <Button variant="destructive" size="sm" :disabled="busy" data-testid="leave-anyway" @click="leave(true)">Sign out anyway</Button>
-            </div>
-          </div>
-          <div><Button variant="outline" :disabled="busy" data-testid="sign-out" @click="leave(false)"><LogOut class="mr-1.5 h-4 w-4" /> Sign out</Button></div>
-        </CardContent>
+        <CardContent><SignOutControls /></CardContent>
       </Card>
 
       <Card class="border-destructive/50">

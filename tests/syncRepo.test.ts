@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { txFor } from "../server/utils/syncRepo";
 import type { Row } from "../server/utils/syncTypes";
@@ -13,12 +15,8 @@ describe("the Prisma repository scopes every query by userId", () => {
     return result;
   };
   const db = {
-    syncCursor: { upsert: rec("cursor.upsert"), update: rec("cursor.update") },
+    syncCursor: { upsert: rec("cursor.upsert", { revision: 3n, bytes: 7 }), update: rec("cursor.update") },
     syncDoc: { findUnique: rec("doc.findUnique"), upsert: rec("doc.upsert") },
-    $queryRaw: async (strings: TemplateStringsArray, ...values: unknown[]) => {
-      calls.push({ op: "raw", args: { sql: strings.join("?"), values } });
-      return [{ revision: 3n, bytes: 7 }];
-    },
   };
   const tx = txFor(db as never);
 
@@ -28,7 +26,7 @@ describe("the Prisma repository scopes every query by userId", () => {
     await tx.record("user-A", "expense", "e1");
     await tx.put("user-A", row());
     await tx.setCursor("user-A", 4n, 17);
-    expect(calls.map((c) => c.op)).toEqual(["cursor.upsert", "raw", "doc.findUnique", "doc.upsert", "cursor.update"]);
+    expect(calls.map((c) => c.op)).toEqual(["cursor.upsert", "doc.findUnique", "doc.upsert", "cursor.update"]);
     for (const c of calls) expect(JSON.stringify(c.args, (_k, v) => (typeof v === "bigint" ? v.toString() : v)), c.op).toContain("user-A");
   });
 
@@ -38,10 +36,41 @@ describe("the Prisma repository scopes every query by userId", () => {
     expect(JSON.stringify(calls)).not.toContain("user-A");
   });
 
-  it("the locking query is FOR UPDATE on the cursor row (pushes of two devices are ordered)", async () => {
+  it("the cursor row is locked by UPDATING it (pushes of two devices are ordered), and there is no raw SQL (it would ignore the schema the client works in)", async () => {
     calls.length = 0;
-    await tx.lockCursor("user-A");
-    expect((calls.find((c) => c.op === "raw")!.args as { sql: string }).sql).toMatch(/FROM "SyncCursor" WHERE "userId" = \? FOR UPDATE/);
+    expect(await tx.lockCursor("user-A")).toEqual({ revision: 3n, bytes: 7 });
+    const args = calls[0]!.args as { where: { userId: string }; update: { updatedAt: Date } };
+    expect(calls.map((c) => c.op)).toEqual(["cursor.upsert"]);
+    expect(args.where).toEqual({ userId: "user-A" });
+    expect(args.update.updatedAt).toBeInstanceOf(Date); // the update is what takes the lock
+    const src = readFileSync(fileURLToPath(new URL("../server/utils/syncRepo.ts", import.meta.url)), "utf8");
+    expect(src).not.toMatch(/\$queryRaw|\$executeRaw|Unsafe/);
+  });
+
+  it("two first pushes at the same moment: the one that loses the race retries as an update, and any other failure is not swallowed", async () => {
+    let n = 0;
+    const racing = {
+      syncCursor: {
+        upsert: async () => {
+          if (n++ === 0) throw Object.assign(new Error("unique"), { code: "P2002" });
+          return { revision: 9n, bytes: 1 };
+        },
+        update: async () => null,
+      },
+      syncDoc: { findUnique: async () => null, upsert: async () => null },
+    };
+    expect(await txFor(racing as never).lockCursor("user-A")).toEqual({ revision: 9n, bytes: 1 });
+    expect(n).toBe(2);
+    const down = {
+      syncCursor: {
+        upsert: async () => {
+          throw Object.assign(new Error("down"), { code: "P1001" });
+        },
+        update: async () => null,
+      },
+      syncDoc: { findUnique: async () => null, upsert: async () => null },
+    };
+    await expect(txFor(down as never).lockCursor("user-A")).rejects.toThrow("down");
   });
 
   it("writes the projection columns and nothing else of the record's content into them", async () => {

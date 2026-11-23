@@ -3,7 +3,7 @@ import { Prisma } from "../generated/prisma/client";
 import { useDb } from "./db";
 import type { Row, SyncRepo, Tx } from "./syncTypes";
 
-type Db = Pick<Prisma.TransactionClient, "syncDoc" | "syncCursor" | "$queryRaw">;
+type Db = Pick<Prisma.TransactionClient, "syncDoc" | "syncCursor">;
 
 type DocRow = {
   collection: string;
@@ -34,10 +34,18 @@ const toRow = (r: DocRow): Row => ({
 });
 
 export const txFor = (db: Db): Tx => ({
+  // The user's cursor row is locked by UPDATING it (an UPDATE holds the row lock until the transaction ends, like SELECT ... FOR UPDATE, so two devices' pushes are ordered)
+  // and the same statement returns its revision and bytes. No raw SQL: a table name in raw SQL does not follow the `?schema=` the client works in. `updatedAt` is "last sync".
   async lockCursor(userId) {
-    await db.syncCursor.upsert({ where: { userId }, create: { userId }, update: {} });
-    const rows = await db.$queryRaw<{ revision: bigint; bytes: number }[]>`SELECT "revision", "bytes" FROM "SyncCursor" WHERE "userId" = ${userId} FOR UPDATE`;
-    return { revision: BigInt(rows[0]?.revision ?? 0), bytes: Number(rows[0]?.bytes ?? 0) };
+    const lock = () => db.syncCursor.upsert({ where: { userId }, create: { userId }, update: { updatedAt: new Date() } });
+    let c;
+    try {
+      c = await lock();
+    } catch (e) {
+      if ((e as { code?: string })?.code !== "P2002") throw e;
+      c = await lock(); // two first pushes of one account at the same moment: the other one created the row, so this time it is an update
+    }
+    return { revision: BigInt(c.revision), bytes: Number(c.bytes) };
   },
   async record(userId, collection, id) {
     const r = await db.syncDoc.findUnique({ where: { userId_collection_id: { userId, collection, id } } });

@@ -21,7 +21,9 @@ export function apiHandler<T extends EventHandlerRequest = EventHandlerRequest, 
         setResponseStatus(event, e.statusCode);
         return (e.data as object | undefined) ?? { error: "error" };
       }
-      console.error(`[api] unexpected error in ${event.method} ${event.path.split("?")[0]}: ${e instanceof Error ? e.name : typeof e}`);
+      // the error's name and, when it has one, its short code (a Prisma "P2002", a Node "ECONNRESET"): never its message, which can hold a connection string or a record
+      const code = e && typeof e === "object" && "code" in e && typeof (e as { code: unknown }).code === "string" && /^[A-Za-z0-9_]{1,40}$/.test((e as { code: string }).code) ? ` ${(e as { code: string }).code}` : "";
+      console.error(`[api] unexpected error in ${event.method} ${event.path.split("?")[0]}: ${e instanceof Error ? e.name : typeof e}${code}`);
       setResponseStatus(event, 500);
       return { error: "server_error" };
     }
