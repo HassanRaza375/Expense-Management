@@ -471,7 +471,7 @@ const monthStatus = (c) => (c.change > 0 ? 'warn' : c.change < 0 ? 'good' : 'def
           <div class="flex min-w-0 flex-col gap-1.5">
             <Label>Period</Label>
             <Select v-model="period">
-              <SelectTrigger data-testid="period-select"><SelectValue>{{ PERIOD_LABELS[period] }}</SelectValue></SelectTrigger>
+              <SelectTrigger data-testid="period-select" aria-label="Period"><SelectValue>{{ PERIOD_LABELS[period] }}</SelectValue></SelectTrigger>
               <SelectContent>
                 <SelectItem v-for="id in PERIOD_ORDER" :key="id" :value="id">{{ PERIOD_LABELS[id] }}</SelectItem>
               </SelectContent>
@@ -490,7 +490,7 @@ const monthStatus = (c) => (c.change > 0 ? 'warn' : c.change < 0 ? 'good' : 'def
           <div class="flex min-w-0 flex-col gap-1.5">
             <Label>Budget cycle</Label>
             <Select v-model="cycleChoice">
-              <SelectTrigger data-testid="cycle-select"><SelectValue>{{ cycleChoiceLabel }}</SelectValue></SelectTrigger>
+              <SelectTrigger data-testid="cycle-select" aria-label="Budget cycle"><SelectValue>{{ cycleChoiceLabel }}</SelectValue></SelectTrigger>
               <SelectContent>
                 <SelectItem v-for="o in cycleOptions" :key="o.value" :value="o.value">{{ o.label }}</SelectItem>
               </SelectContent>
@@ -499,7 +499,7 @@ const monthStatus = (c) => (c.change > 0 ? 'warn' : c.change < 0 ? 'good' : 'def
           <div class="flex min-w-0 flex-col gap-1.5">
             <Label>Category</Label>
             <Select v-model="categoryId">
-              <SelectTrigger data-testid="category-select">
+              <SelectTrigger data-testid="category-select" aria-label="Category">
                 <SelectValue>{{ categoryId === 'all' ? 'All categories' : `${categoryFor(categoryId).icon} ${categoryFor(categoryId).name}` }}</SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -511,7 +511,7 @@ const monthStatus = (c) => (c.change > 0 ? 'warn' : c.change < 0 ? 'good' : 'def
           <div v-if="hasAccounts" class="flex min-w-0 flex-col gap-1.5">
             <Label>Account</Label>
             <Select v-model="accountFilter">
-              <SelectTrigger data-testid="account-select"><SelectValue>{{ accountFilterLabel }}</SelectValue></SelectTrigger>
+              <SelectTrigger data-testid="account-select" aria-label="Account"><SelectValue>{{ accountFilterLabel }}</SelectValue></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All accounts</SelectItem>
                 <SelectItem :value="ACCOUNT_NONE">Unassigned</SelectItem>
@@ -522,7 +522,7 @@ const monthStatus = (c) => (c.change > 0 ? 'warn' : c.change < 0 ? 'good' : 'def
           <div class="flex min-w-0 flex-col gap-1.5">
             <Label>Sort</Label>
             <Select v-model="sortMode">
-              <SelectTrigger data-testid="sort-select"><SelectValue>{{ SORT_LABELS[sortMode] }}</SelectValue></SelectTrigger>
+              <SelectTrigger data-testid="sort-select" aria-label="Sort"><SelectValue>{{ SORT_LABELS[sortMode] }}</SelectValue></SelectTrigger>
               <SelectContent>
                 <SelectItem v-for="(label, key) in SORT_LABELS" :key="key" :value="key">{{ label }}</SelectItem>
               </SelectContent>

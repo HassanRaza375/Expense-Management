@@ -18,7 +18,7 @@ const { data, error } = useAdminLoad(() => adminGet('/api/admin/investments' + (
     <template v-if="data">
       <Card>
         <CardHeader><CardTitle class="text-base">By month</CardTitle></CardHeader>
-        <CardContent class="overflow-x-auto">
+        <CardContent class="overflow-x-auto" tabindex="0" role="region" aria-label="Table (scrolls sideways)">
           <table class="w-full text-sm">
             <thead><tr class="text-left text-muted-foreground"><th class="py-1 pr-4">Month</th><th class="pr-4 text-right">Put in</th><th class="text-right">Taken out</th></tr></thead>
             <tbody>
@@ -30,7 +30,7 @@ const { data, error } = useAdminLoad(() => adminGet('/api/admin/investments' + (
       </Card>
       <Card>
         <CardHeader><CardTitle class="text-base">By fund</CardTitle></CardHeader>
-        <CardContent class="overflow-x-auto">
+        <CardContent class="overflow-x-auto" tabindex="0" role="region" aria-label="Table (scrolls sideways)">
           <table class="w-full text-sm">
             <thead><tr class="text-left text-muted-foreground"><th class="py-1 pr-4">Fund</th><th class="pr-4 text-right">Put in</th><th class="pr-4 text-right">Taken out</th><th class="pr-4 text-right">Net in</th><th class="text-right">Latest value</th></tr></thead>
             <tbody>

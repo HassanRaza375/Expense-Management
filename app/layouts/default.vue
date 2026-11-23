@@ -51,7 +51,7 @@ const pendingRecurringCount = computed(() => {
     <AppSidebar :pending-recurring-count="pendingRecurringCount" />
     <div class="flex min-w-0 flex-1 flex-col">
       <header class="sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-card/95 px-4 py-3 backdrop-blur">
-        <Button variant="ghost" size="icon" @click="sidebar.toggle()">
+        <Button variant="ghost" size="icon" aria-label="Open or close the menu" @click="sidebar.toggle()">
           <Menu class="h-5 w-5" />
         </Button>
         <span class="font-display text-base font-semibold">{{ route.meta.title }}</span>

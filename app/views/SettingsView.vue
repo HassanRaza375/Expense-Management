@@ -253,7 +253,7 @@ const usageKB = computed(() => (usageBytes() / 1024).toFixed(1))
       <CardHeader><CardTitle class="text-base">Profile</CardTitle></CardHeader>
       <CardContent class="flex flex-col gap-1.5">
         <Label>Name</Label>
-        <Input v-model="profileName" type="text" class="max-w-64" @blur="saveProfile" />
+        <Input v-model="profileName" type="text" aria-label="Name" class="max-w-64" @blur="saveProfile" />
       </CardContent>
     </Card>
 
@@ -271,11 +271,11 @@ const usageKB = computed(() => (usageBytes() / 1024).toFixed(1))
       <CardContent class="flex flex-col gap-3">
         <div class="flex flex-col gap-1.5">
           <Label>Currency symbol</Label>
-          <Input :model-value="settings.currencySymbol" type="text" class="max-w-20" @change="setCurrencySymbol($event.target.value)" />
+          <Input :model-value="settings.currencySymbol" type="text" aria-label="Currency symbol" class="max-w-20" @change="setCurrencySymbol($event.target.value)" />
         </div>
         <div class="flex flex-col gap-1.5">
           <Label>Cycle reset day</Label>
-          <Input :model-value="settings.cycleResetDay" type="number" min="1" max="31" class="max-w-20" @change="setCycleResetDay($event.target.value)" />
+          <Input :model-value="settings.cycleResetDay" type="number" min="1" max="31" aria-label="Cycle reset day" class="max-w-20" @change="setCycleResetDay($event.target.value)" />
         </div>
       </CardContent>
     </Card>

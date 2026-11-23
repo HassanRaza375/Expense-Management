@@ -8,6 +8,7 @@ export function prismaAccountRepo(db: PrismaClient): AccountRepo {
     countSuperAdmins: () => db.user.count({ where: { role: "superadmin", disabled: false } }),
     async deleteUser(id) {
       await db.user.delete({ where: { id } }); // sessions, accounts, sync records and the cursor go with it (onDelete: Cascade)
+      await db.rateLimit.deleteMany({ where: { key: { startsWith: "api:", endsWith: `:${id}` } } }); // the account's API request counters
     },
     async setAvatar(id, publicId, version) {
       await db.user.update({ where: { id }, data: { avatarPublicId: publicId, avatarVersion: version } });

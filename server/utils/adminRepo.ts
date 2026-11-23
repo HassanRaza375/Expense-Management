@@ -74,6 +74,7 @@ export const prismaAdminRepo = (): AdminRepo => {
     },
     async deleteUser(id) {
       await db().user.delete({ where: { id } }); // sessions, sign-in methods, sync records and the cursor go with it (onDelete: Cascade)
+      await db().rateLimit.deleteMany({ where: { key: { startsWith: "api:", endsWith: `:${id}` } } }); // the account's API request counters
     },
     async audit(e) {
       await db().auditLog.create({ data: { id: randomUUID(), actorId: e.actorId, actorEmail: e.actorEmail, action: e.action, targetType: e.targetType, targetId: e.targetId, summary: e.summary as Prisma.InputJsonValue } });

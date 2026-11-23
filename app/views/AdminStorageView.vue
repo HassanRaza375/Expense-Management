@@ -14,7 +14,7 @@ const { data, error } = useAdminLoad(() => adminGet('/api/admin/storage'))
     <p v-if="error" class="m-0 text-sm text-destructive" role="alert">{{ error }}</p>
     <Card v-if="data">
       <CardHeader><CardTitle class="text-base">{{ data.receipts }} receipts, {{ formatBytes(data.receiptBytes) }}; records {{ formatBytes(data.recordBytes) }}</CardTitle></CardHeader>
-      <CardContent class="overflow-x-auto">
+      <CardContent class="overflow-x-auto" tabindex="0" role="region" aria-label="Table (scrolls sideways)">
         <table class="w-full text-sm">
           <thead><tr class="text-left text-muted-foreground"><th class="py-1 pr-4">Account</th><th class="pr-4 text-right">Receipts</th><th class="pr-4 text-right">Receipt storage</th><th class="pr-4 text-right">Records</th><th class="text-right">Record storage</th></tr></thead>
           <tbody>

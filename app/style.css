@@ -27,6 +27,10 @@
   --status-good: #3f8563;
   --status-warn: #b9791f;
   --status-over: #c1544a;
+  /* the same three colours when used as TEXT: darker, so small text meets 4.5:1 on the page, the card and the tinted pills (axe, e2e/a11y.spec.ts). Fills keep the colours above. */
+  --status-good-text: #336c50;
+  --status-warn-text: #875817;
+  --status-over-text: #9c443c;
   --radius: 0.75rem;
 }
 
@@ -37,7 +41,7 @@
   --card-foreground: #e7ecef;
   --popover: #1a2029;
   --popover-foreground: #e7ecef;
-  --primary: #4a9498;
+  --primary: #579b9f; /* was #4a9498: 4.1:1 as text on the accent surface, now 4.6:1 */
   --primary-foreground: #0b1113;
   --secondary: #212a33;
   --secondary-foreground: #e7ecef;
@@ -53,6 +57,9 @@
   --status-good: #5fae86;
   --status-warn: #d6963a;
   --status-over: #d9695f;
+  --status-good-text: #6ab48e;
+  --status-warn-text: #d7983e;
+  --status-over-text: #e1877f;
 }
 
 @theme inline {
@@ -127,3 +134,8 @@
     transition-duration: 0.001ms !important;
   }
 }
+
+/* status colours as text (unlayered, so they win over the utility classes of the same name) */
+.text-status-good { color: var(--status-good-text); }
+.text-status-warn { color: var(--status-warn-text); }
+.text-status-over { color: var(--status-over-text); }

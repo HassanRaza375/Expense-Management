@@ -29,7 +29,7 @@ const describe = (s) => {
     <p class="m-0 text-sm text-muted-foreground">Every change an admin makes: who, what, when, and a summary of the account fields that changed. Never notes or other private content.</p>
     <p v-if="error" class="m-0 text-sm text-destructive" role="alert">{{ error }}</p>
     <Card v-if="data">
-      <CardContent class="overflow-x-auto pt-6">
+      <CardContent class="overflow-x-auto pt-6" tabindex="0" role="region" aria-label="Table (scrolls sideways)">
         <table class="w-full text-sm">
           <thead><tr class="text-left text-muted-foreground"><th class="py-1 pr-4">When</th><th class="pr-4">Who</th><th class="pr-4">Action</th><th>What</th></tr></thead>
           <tbody>

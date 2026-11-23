@@ -79,8 +79,50 @@ describe("no route takes the user from the caller", () => {
 describe("the repository the account routes use is scoped to the session's user", () => {
   it("every query in accountRepo.ts names the user by the id it was given (never a global where)", () => {
     const src = readFileSync(fileURLToPath(new URL("../server/utils/accountRepo.ts", import.meta.url)), "utf8");
-    expect(src).not.toMatch(/deleteMany|updateMany/);
+    // the only bulk statement is the account's own API request counters, matched on the account's id
+    expect(src.match(/deleteMany|updateMany/g) ?? []).toHaveLength(1);
+    expect(src).toMatch(/db\.rateLimit\.deleteMany\(\{ where: \{ key: \{ startsWith: "api:", endsWith: `:\$\{id\}` \} \} \}\)/);
     expect(src).toMatch(/db\.user\.delete\(\{ where: \{ id \} \}\)/);
     expect(src).toMatch(/db\.user\.update\(\{ where: \{ id \}/);
+  });
+});
+
+describe("every route has an authorization check written for it, and a request budget", () => {
+  it("scripts/live/authzTable.mjs lists every route file (a new route needs a row, and so an authorization check in the live run)", async () => {
+    const { ROUTES } = (await import("../scripts/live/authzTable.mjs")) as { ROUTES: Array<{ file: string; access: string }> };
+    expect(ROUTES.map((r) => r.file).sort()).toEqual(files.map(rel).sort());
+    for (const r of ROUTES) expect(["public", "user", "admin"]).toContain(r.access);
+    // the table and the rules in this file agree: the public rows are the PUBLIC list, the admin rows are the files under admin/
+    expect(ROUTES.filter((r) => r.access === "public").map((r) => r.file).sort()).toEqual(Object.keys(PUBLIC).sort());
+    expect(ROUTES.filter((r) => r.access === "admin").map((r) => r.file).sort()).toEqual(files.map(rel).filter((f) => f.startsWith("admin/")).sort());
+  });
+
+  it("both guards count the request against the account's general budget, and the costly routes name a stricter bucket", () => {
+    const session = readFileSync(fileURLToPath(new URL("../server/utils/session.ts", import.meta.url)), "utf8");
+    expect(session.match(/await limit\(event, user\.id, "general"\)/g)).toHaveLength(2); // optionalUser (so requireUser) and requireSuperAdmin
+    const BUCKET: Record<string, string> = {
+      "sync/push.post.ts": "sync.push",
+      "sync/pull.post.ts": "sync.pull",
+      "receipts/[id].put.ts": "receipt.put",
+      "receipts/[id].get.ts": "receipt.get",
+      "receipts/cleanup.post.ts": "receipt.cleanup",
+      "account/avatar.post.ts": "avatar.write",
+      "account/avatar.delete.ts": "avatar.write",
+      "account/index.delete.ts": "account.delete",
+      "admin/users/[id].patch.ts": "admin.write",
+      "admin/users/[id].delete.ts": "admin.write",
+      "admin/users/[id]/reset-email.post.ts": "admin.write",
+    };
+    for (const [f, bucket] of Object.entries(BUCKET)) {
+      const src = readFileSync(path.join(apiDir, f), "utf8");
+      const who = f.startsWith("admin/") ? "admin" : "user";
+      expect(src, f).toContain(`await limit(event, ${who}.id, "${bucket}");`);
+      // the budget is spent right after the guard, before any body is read or any work is done
+      const body = src.slice(src.indexOf("apiHandler("));
+      expect(body.indexOf("await limit("), f).toBeLessThan(body.search(/read(SmallJson|LimitedBytes|JsonLimited)\(|run\(/));
+    }
+    // every state-changing, non-public route that is not in the list above is cheap and is covered by the general budget only
+    const writers = files.map(rel).filter((f) => /\.(post|put|patch|delete)\.ts$/.test(f) && !(f in PUBLIC));
+    expect(writers.filter((f) => !(f in BUCKET))).toEqual([]);
   });
 });

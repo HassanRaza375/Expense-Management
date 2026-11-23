@@ -6,6 +6,7 @@ import { useAuth } from "./auth";
 import { AuthConfigError } from "./authConfig";
 import { jsonError, requireEnabled } from "./api";
 import { sameOriginOk } from "./origin";
+import { limit } from "./rateLimit";
 import type { AccountUser } from "./accountService";
 
 export interface SessionUser extends AccountUser {
@@ -46,6 +47,7 @@ export async function optionalUser(event: H3Event): Promise<SessionUser | null> 
   if (!session) return null;
   const user = session.user as unknown as SessionUser;
   if (user.disabled) throw jsonError(403, "account_disabled");
+  await limit(event, user.id, "general"); // one budget for everything a signed-in account calls (the stricter ones are in the routes that cost more)
   return user;
 }
 
@@ -72,5 +74,6 @@ export async function requireSuperAdmin(event: H3Event): Promise<SessionUser> {
   })();
   if (!user || user.disabled || user.role !== "superadmin") throw jsonError(404, "not_found");
   requireSameOrigin(event);
+  await limit(event, user.id, "general");
   return user;
 }

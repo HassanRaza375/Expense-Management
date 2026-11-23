@@ -489,6 +489,13 @@ Additive only; no change to stored expense shape in the first pass.
 - **Not verified:** a real reset email (no email provider key); the admin UI against the real database in a browser (the pages ran against the real rules over in-memory data and the routes against PostgreSQL; the two are not joined in one run).
 - **Next:** Phase 8 (hardening and handover).
 
+### Session 19 - 2026-11-23 (Nuxt migration: Phase 8, hardening and handover)
+- **Done:** a per-account API budget (D58), an authorization table plus a live run of every route (D59), axe accessibility tests on every route and the fixes they forced (D60), a startup before/after (D61), `docs/DEPLOY.md` (variables, order, seeding, flag before build, limits), `docs/PAGES.md`, a security review of the whole branch diff.
+- **Result:** `scripts/live/authz.mjs` against the TEST database: all checks pass (92): every one of the 26 routes as signed out / ordinary user / forged role / invented headers / foreign origin / super admin, the account acted on is always the session's, size limits (including chunked bodies without a length), the 429 with `Retry-After` and recovery, counters removed with the account. axe: 79 browser tests pass together with the admin tests (21 pages x 2 themes, 21 at 375px, account and admin pages). Startup 536 ms before, 537 ms after. Security review: no finding at or above the confidence threshold (guards, CSRF, receipt path and ownership, no raw SQL, no `v-html`, TLS always verified).
+- **Real findings fixed:** 67 axe failures (unnamed icon buttons and selects, unlabelled inputs, status colours at 3.1-4.4:1, a dark-theme primary at 4.1:1, keyboard-unreachable scroll regions, colour-only links); a chunked request body with no length bypassed the 4 KB JSON check; the live script itself had checks that could not fail, replaced by real ones.
+- **Not verified:** a real reset email, Google sign-in (no keys); a signed receipt link opened in a browser tab against real Cloudinary; production (never touched). Startup with the flag ON was not measured (the shipping default is off).
+- **Next (the owner):** docs/DEPLOY.md, section 2.
+
 ## J. Next recommended action
 
 **Protect your data before the first start of this version (it stamps data version 3):**

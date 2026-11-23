@@ -1,6 +1,6 @@
 // Shared by the routes in server/api/account/*: the dependencies of the account service, ServiceError to JSON, and bounded body readers.
 import type { H3Event } from "h3";
-import { getRequestHeader, readBody, readRawBody } from "h3";
+import { getRequestHeader, readRawBody } from "h3";
 import { ServiceError, type Deps } from "./accountService";
 import { prismaAccountRepo } from "./accountRepo";
 import { jsonError } from "./api";
@@ -37,9 +37,17 @@ export async function readLimitedBytes(event: H3Event, max: number, code = "phot
   return raw;
 }
 
-/** A small JSON body (never more than 4 KB: nothing in the account area is bigger). */
+/** A small JSON body (never more than 4 KB: nothing in the account area is bigger). Read as raw bytes and measured, so a body sent without a length is refused too. */
 export async function readSmallJson(event: H3Event): Promise<Record<string, unknown>> {
   if (declaredLength(event) > 4096) throw jsonError(413, "too_large");
-  const body = await readBody(event).catch(() => null);
+  const raw = await readRawBody(event, "utf8").catch(() => null);
+  if (!raw) return {};
+  if (Buffer.byteLength(raw) > 4096) throw jsonError(413, "too_large");
+  let body: unknown;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    return {};
+  }
   return body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
 }

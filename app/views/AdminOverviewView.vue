@@ -23,7 +23,7 @@ const { data, error, loading } = useAdminLoad(() => adminGet('/api/admin/overvie
       </div>
       <Card>
         <CardHeader><CardTitle class="text-base">Expenses, the last 12 months (all accounts)</CardTitle></CardHeader>
-        <CardContent class="overflow-x-auto">
+        <CardContent class="overflow-x-auto" tabindex="0" role="region" aria-label="Table (scrolls sideways)">
           <table class="w-full text-sm">
             <thead><tr class="text-left text-muted-foreground"><th class="py-1 pr-4">Month</th><th class="pr-4 text-right">Spent</th><th class="pr-4 text-right">Refunds</th><th class="pr-4 text-right">Net</th><th class="text-right">Count</th></tr></thead>
             <tbody>

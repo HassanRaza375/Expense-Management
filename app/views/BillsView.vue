@@ -207,21 +207,21 @@ function latestReadingFor(connectionId) {
         <Card>
           <CardContent class="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center">
             <Select v-model="filterType">
-              <SelectTrigger class="w-full sm:w-40"><SelectValue /></SelectTrigger>
+              <SelectTrigger class="w-full sm:w-40" aria-label="Bill type"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All types</SelectItem>
                 <SelectItem v-for="t in BILL_TYPES" :key="t.value" :value="t.value">{{ t.label }}</SelectItem>
               </SelectContent>
             </Select>
             <Select v-model="filterConnection">
-              <SelectTrigger class="w-full sm:w-44"><SelectValue /></SelectTrigger>
+              <SelectTrigger class="w-full sm:w-44" aria-label="Connection"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All connections</SelectItem>
                 <SelectItem v-for="c in connections.connections" :key="c.id" :value="c.id">{{ c.connectionName }}</SelectItem>
               </SelectContent>
             </Select>
             <Select v-model="filterStatus">
-              <SelectTrigger class="w-full sm:w-40"><SelectValue /></SelectTrigger>
+              <SelectTrigger class="w-full sm:w-40" aria-label="Status"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
                 <SelectItem v-for="s in BILL_STATUSES" :key="s.value" :value="s.value">{{ s.label }}</SelectItem>

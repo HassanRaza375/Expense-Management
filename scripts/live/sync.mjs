@@ -195,8 +195,13 @@ try {
   check("a stored day key is used as sent", by("goal", "g1")?.dayKey === "2026-11-01");
   const leak = await pg.query(`SELECT count(*)::int AS n FROM "SyncDoc" WHERE "userId" = $1 AND (kind ILIKE '%Groceries%' OR "categoryId" ILIKE '%Lunch%')`, [idA]);
   check("no note or name ever reaches a projection column", leak.rows[0].n === 0);
-  const blob = await pg.query(`SELECT count(*)::int AS n FROM "SyncDoc" WHERE "userId" = $1 AND (data::text ILIKE '%bill.jpg%' OR data::text ILIKE '%bill.pdf%')`, [idA]);
-  check("receipts and bill files never left the device (not in any record)", blob.rows[0].n === 0);
+  // Phase 6 (D49): a receipt is a record of its own, so its NAME, type and size are in the account; the file itself goes to private storage, never into a record.
+  // Bill attachments are still device-only.
+  const billFiles = await pg.query(`SELECT count(*)::int AS n FROM "SyncDoc" WHERE "userId" = $1 AND data::text ILIKE '%bill.pdf%'`, [idA]);
+  check("bill attachments never left the device (not in any record)", billFiles.rows[0].n === 0);
+  const rec = await pg.query(`SELECT data FROM "SyncDoc" WHERE "userId" = $1 AND collection = 'receipt' AND "deletedAt" IS NULL`, [idA]);
+  const META = new Set(["id", "expenseId", "name", "filename", "mimeType", "size"]);
+  check("the receipt is a record that holds only its metadata (no file content, no extra fields)", rec.rows.length === 1 && Object.keys(rec.rows[0].data).every((k) => META.has(k)) && rec.rows[0].data.size === 1000, JSON.stringify(rec.rows.map((r) => Object.keys(r.data))));
   const cur = (await pg.query(`SELECT revision::text, bytes FROM "SyncCursor" WHERE "userId" = $1`, [idA])).rows[0];
   const sumBytes = (await pg.query(`SELECT COALESCE(sum(bytes), 0)::int AS n FROM "SyncDoc" WHERE "userId" = $1 AND "deletedAt" IS NULL`, [idA])).rows[0].n;
   check("the cursor's byte count is the sum of the live records", cur.bytes === sumBytes, `${cur.bytes} vs ${sumBytes}`);

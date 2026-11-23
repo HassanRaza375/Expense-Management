@@ -129,7 +129,7 @@ const rate = (r) => (r === null ? '—' : r.toFixed(0) + '%')
             <h3 class="m-0 text-sm font-semibold">Cash flow by budget cycle</h3>
             <p class="m-0 text-xs text-muted-foreground">Income minus spending (refunds taken off), for the last six cycles. The current cycle matches the Dashboard.</p>
           </div>
-          <div class="overflow-x-auto">
+          <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Net worth table (scrolls sideways)">
             <table class="w-full min-w-[26rem] text-sm" data-testid="cash-flow">
               <thead>
                 <tr class="text-left text-xs text-muted-foreground">

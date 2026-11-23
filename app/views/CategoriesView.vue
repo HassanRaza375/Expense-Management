@@ -108,8 +108,8 @@ function moveDown(idx) {
           <Badge v-if="cat.isDefault" variant="secondary">default</Badge>
           <div class="ml-auto flex flex-wrap items-center gap-2 sm:ml-0">
             <div class="flex gap-0.5">
-              <Button variant="outline" size="icon" class="h-7 w-7" @click="moveUp(idx)"><ArrowUp class="h-3.5 w-3.5" /></Button>
-              <Button variant="outline" size="icon" class="h-7 w-7" @click="moveDown(idx)"><ArrowDown class="h-3.5 w-3.5" /></Button>
+              <Button variant="outline" size="icon" class="h-7 w-7" title="Move up" :aria-label="`Move ${cat.name} up`" @click="moveUp(idx)"><ArrowUp class="h-3.5 w-3.5" /></Button>
+              <Button variant="outline" size="icon" class="h-7 w-7" title="Move down" :aria-label="`Move ${cat.name} down`" @click="moveDown(idx)"><ArrowDown class="h-3.5 w-3.5" /></Button>
             </div>
             <div class="flex gap-2">
               <Button variant="outline" size="sm" @click="openEdit(cat)">Edit</Button>

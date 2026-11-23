@@ -69,8 +69,8 @@ function handleDelete(tag) {
           <CardContent class="flex items-center gap-3 p-3">
             <span class="text-lg">{{ tag.icon }}</span>
             <span class="min-w-0 flex-1 truncate font-medium">{{ tag.name }}</span>
-            <Button variant="outline" size="icon" class="h-7 w-7" @click="openEdit(tag)"><Pencil class="h-3.5 w-3.5" /></Button>
-            <Button variant="outline" size="icon" class="h-7 w-7" @click="handleDelete(tag)"><Trash2 class="h-3.5 w-3.5" /></Button>
+            <Button variant="outline" size="icon" class="h-7 w-7" title="Edit" aria-label="Edit this tag" @click="openEdit(tag)"><Pencil class="h-3.5 w-3.5" /></Button>
+            <Button variant="outline" size="icon" class="h-7 w-7" title="Delete" aria-label="Delete this tag" @click="handleDelete(tag)"><Trash2 class="h-3.5 w-3.5" /></Button>
           </CardContent>
         </Card>
         <p v-if="!tags.length" class="m-0 text-sm text-muted-foreground">No tags yet.</p>

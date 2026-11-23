@@ -94,11 +94,11 @@ function submitInvestment() {
       <CardContent class="flex flex-col gap-3">
         <div class="flex flex-col gap-1.5">
           <Label>Passphrase</Label>
-          <Input v-model="passphrase" type="password" @keyup.enter="submitPassphrase" />
+          <Input v-model="passphrase" type="password" aria-label="Passphrase" @keyup.enter="submitPassphrase" />
         </div>
         <div v-if="!vault.session.isSetUp" class="flex flex-col gap-1.5">
           <Label>Confirm passphrase</Label>
-          <Input v-model="confirmPassphrase" type="password" @keyup.enter="submitPassphrase" />
+          <Input v-model="confirmPassphrase" type="password" aria-label="Confirm passphrase" @keyup.enter="submitPassphrase" />
         </div>
         <p v-if="error" class="m-0 text-sm text-destructive">{{ error }}</p>
         <Button class="w-full" @click="submitPassphrase">{{ vault.session.isSetUp ? 'Unlock' : 'Create Vault' }}</Button>
@@ -119,7 +119,7 @@ function submitInvestment() {
               <div class="text-sm text-muted-foreground">{{ acc.branch }}</div>
             </div>
             <MaskedField :value="acc.accountNumber || acc.iban" />
-            <Button variant="ghost" size="icon" @click="vault.deleteBankAccount(acc.id)"><Trash2 class="h-4 w-4" /></Button>
+            <Button variant="ghost" size="icon" title="Delete" aria-label="Delete this bank account" @click="vault.deleteBankAccount(acc.id)"><Trash2 class="h-4 w-4" /></Button>
           </div>
           <div class="mt-2 flex flex-wrap gap-2">
             <Input v-model="bankForm.bankName" placeholder="Bank name" class="min-w-32 flex-1" />
@@ -138,7 +138,7 @@ function submitInvestment() {
           <div v-for="card in vault.session.data.cards" :key="card.id" class="flex flex-wrap items-center justify-between gap-3 border-b border-border py-2 last:border-b-0">
             <div><strong>{{ card.network }}</strong> — {{ card.nickname }}</div>
             <MaskedField :value="card.last4" :visible-tail="4" />
-            <Button variant="ghost" size="icon" @click="vault.deleteCard(card.id)"><Trash2 class="h-4 w-4" /></Button>
+            <Button variant="ghost" size="icon" title="Delete" aria-label="Delete this card" @click="vault.deleteCard(card.id)"><Trash2 class="h-4 w-4" /></Button>
           </div>
           <div class="mt-2 flex flex-wrap gap-2">
             <Input v-model="cardForm.network" placeholder="Network (Visa/Master)" class="min-w-32 flex-1" />
@@ -168,7 +168,7 @@ function submitInvestment() {
           <div v-for="inv in vault.session.data.investments" :key="inv.id" class="flex flex-wrap items-center justify-between gap-3 border-b border-border py-2 last:border-b-0">
             <div><strong>{{ inv.name }}</strong> — {{ inv.type }}</div>
             <span class="amount">{{ formatCurrency(inv.currentValue, settings.currencySymbol) }}</span>
-            <Button variant="ghost" size="icon" @click="vault.deleteInvestment(inv.id)"><Trash2 class="h-4 w-4" /></Button>
+            <Button variant="ghost" size="icon" title="Delete" aria-label="Delete this investment" @click="vault.deleteInvestment(inv.id)"><Trash2 class="h-4 w-4" /></Button>
           </div>
           <div class="mt-2 flex flex-wrap gap-2">
             <Input v-model="investForm.name" placeholder="Name" class="min-w-32 flex-1" />

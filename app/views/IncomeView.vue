@@ -62,7 +62,7 @@ function handleDelete(id) {
       <CardContent class="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <Select v-model="filterCycleMode">
-            <SelectTrigger class="w-full sm:w-40"><SelectValue /></SelectTrigger>
+            <SelectTrigger class="w-full sm:w-40" aria-label="Budget cycle"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="this">This cycle</SelectItem>
               <SelectItem value="last">Last cycle</SelectItem>

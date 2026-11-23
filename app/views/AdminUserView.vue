@@ -100,8 +100,8 @@ const remove = () =>
         <CardHeader><CardTitle class="text-base">Totals</CardTitle></CardHeader>
         <CardContent class="flex flex-col gap-2 text-sm">
           <div>Expenses, net: <strong class="amount" data-testid="user-expense-total">{{ minor(data.expenses.total) }}</strong> in {{ data.expenses.count }} records.
-            <RouterLink :to="'/admin/expenses?userId=' + data.user.id" class="text-primary underline-offset-2 hover:underline">By month</RouterLink></div>
-          <div>Income: <strong class="amount">{{ minor(data.income.total) }}</strong>. <RouterLink :to="'/admin/income?userId=' + data.user.id" class="text-primary underline-offset-2 hover:underline">Cash flow</RouterLink></div>
+            <RouterLink :to="'/admin/expenses?userId=' + data.user.id" class="text-primary underline underline-offset-2">By month</RouterLink></div>
+          <div>Income: <strong class="amount">{{ minor(data.income.total) }}</strong>. <RouterLink :to="'/admin/income?userId=' + data.user.id" class="text-primary underline underline-offset-2">Cash flow</RouterLink></div>
           <div>Put into funds: <strong class="amount">{{ minor(data.investments.contributed) }}</strong>, taken out: <strong class="amount">{{ minor(data.investments.withdrawn) }}</strong>.</div>
           <div>Receipts: <strong class="amount">{{ data.storage.receipts }}</strong> ({{ formatBytes(data.storage.receiptBytes) }}).</div>
         </CardContent>

@@ -102,14 +102,14 @@ const filtered = computed(() => {
 
     <div class="flex flex-col gap-2 sm:flex-row">
       <Select v-model="filterCategory">
-        <SelectTrigger class="w-full sm:w-44"><SelectValue /></SelectTrigger>
+        <SelectTrigger class="w-full sm:w-44" aria-label="Category"><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="all">All categories</SelectItem>
           <SelectItem v-for="c in ASSET_CATEGORIES" :key="c" :value="c">{{ c }}</SelectItem>
         </SelectContent>
       </Select>
       <Select v-model="sortBy">
-        <SelectTrigger class="w-full sm:w-52"><SelectValue /></SelectTrigger>
+        <SelectTrigger class="w-full sm:w-52" aria-label="Sort"><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="recent">Recently added</SelectItem>
           <SelectItem value="warranty">Warranty expiring soon</SelectItem>
