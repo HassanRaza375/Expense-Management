@@ -1,9 +1,10 @@
 <script setup>
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { UserRound, LayoutDashboard, Receipt, Banknote, Landmark, Scale, PiggyBank, ReceiptText, Repeat, Tags, Target, Lock, Package, Bike, HandCoins, ChartCandlestick, Settings, Sun, Moon, BookText } from '@lucide/vue'
+import { ShieldCheck, UserRound, LayoutDashboard, Receipt, Banknote, Landmark, Scale, PiggyBank, ReceiptText, Repeat, Tags, Target, Lock, Package, Bike, HandCoins, ChartCandlestick, Settings, Sun, Moon, BookText } from '@lucide/vue'
 import { useSettings } from '../composables/useSettings.js'
-import { accountsEnabled } from '../composables/useAccount'
+import { accountsEnabled, useAccount, refresh as refreshAccount } from '../composables/useAccount'
+import { isUserCacheActive } from '../utils/storage.js'
 import { useSidebar } from '../composables/useSidebar.js'
 import { cn } from '@/lib/utils.js'
 import { Button } from '@/components/ui/button/index.js'
@@ -43,7 +44,15 @@ const baseItems = [
   { path: '/settings', label: 'Settings', icon: Settings },
 ]
 // the Account entry exists only while accounts are turned on (guest mode: the sidebar is exactly what it was)
-const items = accountsOn ? [...baseItems.slice(0, -1), { path: '/account', label: 'Account', icon: UserRound }, baseItems[baseItems.length - 1]] : baseItems
+const accountState = useAccount()
+// in account mode the page asks who is signed in; only a super admin sees the Admin entry (everyone else is told nothing: the pages answer as unknown addresses)
+if (accountsOn && isUserCacheActive()) refreshAccount()
+const items = computed(() => {
+  if (!accountsOn) return baseItems
+  const extra = [{ path: '/account', label: 'Account', icon: UserRound }]
+  if (accountState.profile?.role === 'superadmin') extra.push({ path: '/admin', label: 'Admin', icon: ShieldCheck })
+  return [...baseItems.slice(0, -1), ...extra, baseItems[baseItems.length - 1]]
+})
 </script>
 
 <template>

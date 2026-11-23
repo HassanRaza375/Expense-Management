@@ -27,10 +27,10 @@ describe("every route is either listed as public or demands a signed-in user", (
     expect(routes.length).toBeGreaterThanOrEqual(4);
     for (const f of routes) {
       const src = readFileSync(path.join(apiDir, f), "utf8");
-      expect(src, f).toMatch(/await requireUser\(event\)/);
-      // nothing may happen before the user is known: requireUser is the first statement of the handler
-      const afterHandler = src.slice(src.indexOf("apiHandler(async (event) => {"));
-      expect(afterHandler.replace(/^[^\n]*\n\s*/, "").startsWith("const user = await requireUser(event)"), `${f}: requireUser must be the first statement`).toBe(true);
+      // nothing may happen before the caller is known: the guard is the first statement of the handler (admin routes: the super-admin guard, which answers 404 to everyone else)
+      const afterHandler = src.slice(src.indexOf("apiHandler(async (event) => {")).replace(/^[^\n]*\n\s*/, "");
+      if (f.startsWith("admin/")) expect(/^(const admin = )?await requireSuperAdmin\(event\)/.test(afterHandler), `${f}: requireSuperAdmin must be the first statement`).toBe(true);
+      else expect(afterHandler.startsWith("const user = await requireUser(event)"), `${f}: requireUser must be the first statement`).toBe(true);
     }
   });
 
@@ -43,7 +43,7 @@ describe("every route is either listed as public or demands a signed-in user", (
     for (const f of files.map(rel)) {
       if (f === "health.get.ts" || f === "[...].ts") continue;
       const src = readFileSync(path.join(apiDir, f), "utf8");
-      expect(/requireEnabled\(event\)|requireUser\(event\)|optionalUser\(event\)/.test(src), f).toBe(true); // requireUser and optionalUser call requireEnabled first
+      expect(/requireEnabled\(event\)|requireUser\(event\)|optionalUser\(event\)|requireSuperAdmin\(event\)/.test(src), f).toBe(true); // requireUser and optionalUser call requireEnabled first
     }
     const session = readFileSync(fileURLToPath(new URL("../server/utils/session.ts", import.meta.url)), "utf8");
     expect(session.indexOf("requireEnabled(event)")).toBeGreaterThan(-1);
@@ -57,7 +57,7 @@ describe("no route takes the user from the caller", () => {
     for (const f of files.map(rel)) {
       const src = readFileSync(path.join(apiDir, f), "utf8");
       // the receipt routes take the RECEIPT's id from the path (never a user: the owner is the session's, and the service looks the record up inside that user's own records)
-      const checked = f.startsWith("receipts/") ? src.replace(/getRouterParam\(event, "id"\)/g, "").replace(/import \{ getRouterParam \} from "h3";/, "") : src;
+      const checked = (f.startsWith("receipts/") || f.startsWith("admin/")) ? src.replace(/getRouterParam\(event, "id"\)/g, "").replace(/import \{ getRouterParam \} from "h3";/, "") : src;
       expect(checked, f).not.toMatch(/getQuery|getRouterParam|getValidatedQuery|event\.context\.params|getRequestHeader\(event, ["'](x-user|x-role)/i);
       expect(src, f).not.toMatch(/body\.(userId|user_id|role|id|email)\b/);
     }
@@ -65,7 +65,7 @@ describe("no route takes the user from the caller", () => {
 
   it("the only bodies a route reads are `confirm` (account deletion), the photo bytes, and the sync operations (which carry records, never a user)", () => {
     const reads = files.map(rel).filter((f) => /readSmallJson|readLimitedBytes|readBody|readRawBody|readJsonLimited/.test(readFileSync(path.join(apiDir, f), "utf8")));
-    expect(reads.sort()).toEqual(["account/avatar.post.ts", "account/index.delete.ts", "receipts/[id].put.ts", "receipts/cleanup.post.ts", "sync/pull.post.ts", "sync/push.post.ts"]);
+    expect(reads.sort()).toEqual(["account/avatar.post.ts", "account/index.delete.ts", "admin/users/[id].delete.ts", "admin/users/[id].patch.ts", "receipts/[id].put.ts", "receipts/cleanup.post.ts", "sync/pull.post.ts", "sync/push.post.ts"]);
     expect(readFileSync(path.join(apiDir, "account/index.delete.ts"), "utf8")).toMatch(/body\.confirm/);
   });
 

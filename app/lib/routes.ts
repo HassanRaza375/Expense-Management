@@ -38,6 +38,15 @@ export const ROUTES: AppRoute[] = [
   { name: "settings", path: "/settings", view: "SettingsView.vue", title: "Settings" },
   // the optional account (sign in, photo, delete). Only exists while accounts are turned on: with the flag off the page sends you to Settings.
   { name: "account", path: "/account", view: "AccountView.vue", title: "Account" },
+  // the super-admin panel. Not for ordinary users: the pages and /api/admin/* answer as an unknown address would (the page sends you to the dashboard).
+  { name: "adminOverview", path: "/admin", view: "AdminOverviewView.vue", title: "Admin" },
+  { name: "adminUsers", path: "/admin/users", view: "AdminUsersView.vue", title: "Admin: users" },
+  { name: "adminUser", path: "/admin/users/:id", view: "AdminUserView.vue", title: "Admin: user" },
+  { name: "adminExpenses", path: "/admin/expenses", view: "AdminExpensesView.vue", title: "Admin: expenses" },
+  { name: "adminInvestments", path: "/admin/investments", view: "AdminInvestmentsView.vue", title: "Admin: investments" },
+  { name: "adminIncome", path: "/admin/income", view: "AdminIncomeView.vue", title: "Admin: income" },
+  { name: "adminStorage", path: "/admin/storage", view: "AdminStorageView.vue", title: "Admin: storage" },
+  { name: "adminAudit", path: "/admin/audit", view: "AdminAuditView.vue", title: "Admin: audit log" },
   // the "Hisaab did not start" screen: no layout, no composable (app/lib/startup.ts)
   { name: "startupBlocked", path: "/startup-blocked", view: "StartupBlockedView.vue", title: "Hisaab", layout: false },
   // anything else goes to the dashboard (the old catch-all). Server routes (/api/*) never reach the page router.

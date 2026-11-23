@@ -13,6 +13,7 @@ import AvatarCropDialog from '../components/AvatarCropDialog.vue'
 import { friendly } from '../lib/account/api'
 import { accountsEnabled, useAccount, refresh, signIn, signUp, signInWithGoogle, updateName, changePassword, uploadAvatar, removeAvatar } from '../composables/useAccount'
 import SignOutControls from '../components/SignOutControls.vue'
+import ServiceOwnerNote from '../components/ServiceOwnerNote.vue'
 import { beginFirstSignIn, resumeChoice, deleteAccountEverywhere } from '../composables/useSync'
 import { readHint } from '../lib/sync/mode'
 import { isUserCacheActive } from '../utils/storage.js'
@@ -201,6 +202,8 @@ function removeAccount() {
             </div>
           </form>
 
+          <ServiceOwnerNote />
+
           <div class="flex flex-col gap-2 border-t border-border pt-3 text-sm">
             <div class="flex flex-wrap items-center gap-2">
               <Button variant="outline" size="sm" :disabled="!account.features.google || busy" data-testid="google-button" @click="guarded(signInWithGoogle)">Continue with Google</Button>
@@ -246,6 +249,7 @@ function removeAccount() {
               <Button variant="outline" :disabled="!nameChanged || busy" data-testid="name-save" @click="saveName">Save</Button>
             </div>
           </div>
+          <ServiceOwnerNote />
           <p v-if="message" class="m-0 text-sm" :class="messageKind === 'error' ? 'text-destructive' : 'text-foreground'" :role="messageKind === 'error' ? 'alert' : 'status'" data-testid="account-message">{{ message }}</p>
         </CardContent>
       </Card>

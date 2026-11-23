@@ -6,6 +6,7 @@ import { useSettings } from '../composables/useSettings.js'
 import { accountsEnabled, useAccount, refresh as refreshAccount } from '../composables/useAccount'
 import UserAvatar from '../components/UserAvatar.vue'
 import SyncCard from '../components/SyncCard.vue'
+import ServiceOwnerNote from '../components/ServiceOwnerNote.vue'
 import { receiptCleanup } from '../lib/sync/receiptsApi'
 import { deleteSyncDatabase } from '../lib/sync/baseStore'
 import { useAppLock } from '../composables/useAppLock.js'
@@ -242,6 +243,7 @@ const usageKB = computed(() => (usageBytes() / 1024).toFixed(1))
           </p>
           <Button variant="outline" size="sm" @click="router.push('/account')">{{ account.status === 'signedOut' || account.status === 'idle' || account.status === 'loading' ? 'Sign in or create account' : 'Account' }}</Button>
         </template>
+        <ServiceOwnerNote class="basis-full" />
       </CardContent>
     </Card>
 

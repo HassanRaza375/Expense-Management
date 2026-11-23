@@ -3,6 +3,8 @@ import { deflateSync } from "node:zlib";
 import { ServiceError } from "../server/utils/accountService";
 import type { MediaStore } from "../server/utils/media";
 import { cleanupReceipts, receiptUrl, uploadReceipt } from "../server/utils/receiptService";
+import { adminAudit, adminExpenses, adminIncome, adminInvestments, adminOverview, adminStorage, adminUserDetail, adminUsers, deleteUser, sendResetEmail, updateUser, type AdminDeps } from "../server/utils/adminService";
+import { fakeAdminRepo } from "../tests/fakes/adminRepo";
 import { applyPush, pullSince, summaryOf } from "../server/utils/syncService";
 import { fakeSyncRepo } from "../tests/fakes/syncRepo";
 import { forbidRealServices } from "./fixtures";
@@ -13,7 +15,7 @@ import { forbidRealServices } from "./fixtures";
 
 /** Makes the app believe accounts are turned on: the flag is part of the prerendered shell's config, so the document is rewritten on its way in. */
 export async function enableAccountsInBrowser(page: Page): Promise<void> {
-  await page.route(/^http:\/\/localhost:\d+\/(?!api\/|_nuxt\/)[^?]*$/, async (route) => {
+  await page.route(/^http:\/\/localhost:\d+\/(?!api\/|_nuxt\/)/, async (route) => {
     const req = route.request();
     if (req.resourceType() !== "document") return route.fallback();
     const response = await route.fetch();
@@ -66,6 +68,10 @@ export interface FakeServer {
   /** the receipt files the fake account storage holds (public id -> size), and the ones removed from it */
   files: Map<string, number>;
   destroyed: string[];
+  /** the admin side (created on first use): the REAL admin rules over an in-memory repository that mirrors `users` and `repo` */
+  admin?: ReturnType<typeof fakeAdminRepo>;
+  /** pretend the reset email is set up */
+  emailSetUp?: boolean;
 }
 
 /** One browser (a device) of a test: its own storage, and a switch that cuts only its own network. */
@@ -145,6 +151,49 @@ export async function installFakeAccountServer(page: Page, server: FakeServer = 
       setSession(null);
       return json(200, { success: true });
     }
+    // the admin routes answer 404 to everyone who is not a signed-in super admin (signed out too), before the generic sign-in check
+    if (path.startsWith("/api/admin")) {
+      // to everyone who is not a signed-in super admin: 404, exactly like an address that does not exist
+      if (!me || me.role !== "superadmin") return json(404, { error: "not_found" });
+      const repo = (server.admin ??= fakeAdminRepo(server.repo));
+      for (const u of server.users.values()) if (!repo.accounts.has(u.id)) repo.add({ id: u.id, email: u.email, name: u.name, role: u.role });
+      for (const id of [...repo.accounts.keys()]) if (![...server.users.values()].some((u) => u.id === id)) repo.accounts.delete(id);
+      for (const u of server.users.values()) Object.assign(repo.accounts.get(u.id)!, { email: u.email, name: u.name, role: u.role });
+      const deps: AdminDeps = { repo, media: null, sendReset: server.emailSetUp ? async () => undefined : null };
+      const actor = { id: me.id, email: me.email };
+      const seg = path.split("/").slice(3);
+      const q = url.searchParams;
+      try {
+        if (m === "GET" && seg[0] === "overview") return json(200, await adminOverview(deps));
+        if (m === "GET" && seg[0] === "users" && seg.length === 1) return json(200, await adminUsers(deps, { search: q.get("search") ?? undefined, role: q.get("role") ?? undefined, status: q.get("status") ?? undefined, page: Number(q.get("page")) }));
+        if (m === "GET" && seg[0] === "users" && seg.length === 2) return json(200, await adminUserDetail(deps, decodeURIComponent(seg[1]!)));
+        if (m === "PATCH" && seg[0] === "users" && seg.length === 2) {
+          const out = await updateUser(deps, actor, decodeURIComponent(seg[1]!), body());
+          // the fake server's own users follow the repository (name, email, role, disabled)
+          const a = repo.accounts.get(decodeURIComponent(seg[1]!))!;
+          const fu = [...server.users.values()].find((u) => u.id === a.id);
+          if (fu) Object.assign(fu, { name: a.name, role: a.role });
+          return json(200, out);
+        }
+        if (m === "DELETE" && seg[0] === "users" && seg.length === 2) {
+          const id = decodeURIComponent(seg[1]!);
+          const email = repo.accounts.get(id)?.email;
+          const out = await deleteUser(deps, actor, id, body().confirm);
+          if (email) server.users.delete(email);
+          return json(200, out);
+        }
+        if (m === "POST" && seg[0] === "users" && seg[2] === "reset-email") return json(200, await sendResetEmail(deps, actor, decodeURIComponent(seg[1]!)));
+        if (m === "GET" && seg[0] === "expenses") return json(200, await adminExpenses(deps, q.get("userId") ?? undefined));
+        if (m === "GET" && seg[0] === "income") return json(200, await adminIncome(deps, q.get("userId") ?? undefined));
+        if (m === "GET" && seg[0] === "investments") return json(200, await adminInvestments(deps, q.get("userId") ?? undefined));
+        if (m === "GET" && seg[0] === "storage") return json(200, await adminStorage(deps));
+        if (m === "GET" && seg[0] === "audit") return json(200, await adminAudit(deps, Number(q.get("page"))));
+      } catch (e) {
+        if (e instanceof ServiceError) return json(e.status, { error: e.code });
+        throw e;
+      }
+      return json(404, { error: "not_found" });
+    }
     if (!me) return json(401, { error: "unauthenticated" });
 
     if (path.startsWith("/api/receipts")) {
@@ -223,8 +272,8 @@ export async function installFakeAccountServer(page: Page, server: FakeServer = 
 }
 
 /** A user of the fake server, signed up before the test starts. */
-export function addUser(server: FakeServer, email: string, password = "a-long-password-1", name = "Reader"): FakeUser {
-  const u: FakeUser = { id: `fake-${++counter}`, name, email, password, hasPhoto: false, role: "user" };
+export function addUser(server: FakeServer, email: string, password = "a-long-password-1", name = "Reader", role = "user"): FakeUser {
+  const u: FakeUser = { id: `fake-${++counter}`, name, email, password, hasPhoto: false, role };
   server.users.set(email, u);
   return u;
 }

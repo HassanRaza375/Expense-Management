@@ -54,3 +54,23 @@ export async function requireUser(event: H3Event): Promise<SessionUser> {
   if (!user) throw jsonError(401, "unauthenticated");
   return user;
 }
+
+/**
+ * The admin guard. Everything that is not a signed-in, ENABLED super admin gets the same answer as a path that does not exist: 404 (signed out, an ordinary user, a disabled
+ * account, a forged role header, accounts switched off, no database). The role comes from the SESSION'S user row, never from the request. The same-site check for a state-changing
+ * request comes only after the role is known, so a stranger cannot tell the admin routes exist from the way they refuse.
+ */
+export async function requireSuperAdmin(event: H3Event): Promise<SessionUser> {
+  const user = await (async (): Promise<SessionUser | null> => {
+    try {
+      requireEnabled(event);
+      const session = await authOrUnavailable().api.getSession({ headers: new Headers(getRequestHeaders(event) as Record<string, string>) });
+      return (session?.user as unknown as SessionUser | undefined) ?? null;
+    } catch {
+      return null; // anything that goes wrong is the same answer as "not an admin"
+    }
+  })();
+  if (!user || user.disabled || user.role !== "superadmin") throw jsonError(404, "not_found");
+  requireSameOrigin(event);
+  return user;
+}
