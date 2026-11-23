@@ -56,14 +56,16 @@ describe("no route takes the user from the caller", () => {
   it("no route reads a user id, role or account from the query string, the path, a header or the body", () => {
     for (const f of files.map(rel)) {
       const src = readFileSync(path.join(apiDir, f), "utf8");
-      expect(src, f).not.toMatch(/getQuery|getRouterParam|getValidatedQuery|event\.context\.params|getRequestHeader\(event, ["'](x-user|x-role)/i);
+      // the receipt routes take the RECEIPT's id from the path (never a user: the owner is the session's, and the service looks the record up inside that user's own records)
+      const checked = f.startsWith("receipts/") ? src.replace(/getRouterParam\(event, "id"\)/g, "").replace(/import \{ getRouterParam \} from "h3";/, "") : src;
+      expect(checked, f).not.toMatch(/getQuery|getRouterParam|getValidatedQuery|event\.context\.params|getRequestHeader\(event, ["'](x-user|x-role)/i);
       expect(src, f).not.toMatch(/body\.(userId|user_id|role|id|email)\b/);
     }
   });
 
   it("the only bodies a route reads are `confirm` (account deletion), the photo bytes, and the sync operations (which carry records, never a user)", () => {
     const reads = files.map(rel).filter((f) => /readSmallJson|readLimitedBytes|readBody|readRawBody|readJsonLimited/.test(readFileSync(path.join(apiDir, f), "utf8")));
-    expect(reads.sort()).toEqual(["account/avatar.post.ts", "account/index.delete.ts", "sync/pull.post.ts", "sync/push.post.ts"]);
+    expect(reads.sort()).toEqual(["account/avatar.post.ts", "account/index.delete.ts", "receipts/[id].put.ts", "receipts/cleanup.post.ts", "sync/pull.post.ts", "sync/push.post.ts"]);
     expect(readFileSync(path.join(apiDir, "account/index.delete.ts"), "utf8")).toMatch(/body\.confirm/);
   });
 

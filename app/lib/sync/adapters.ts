@@ -70,7 +70,7 @@ function flat(key: string, collection: string, opts: { deviceOnly?: string[]; de
 }
 
 /** an array of parents whose nested arrays become child collections: `children` = [childCollection, fieldInParent, parentIdField] */
-function nested(key: string, parent: string, children: Array<[collection: string, field: string, parentField: string]>): Adapter {
+function nested(key: string, parent: string, children: Array<[collection: string, field: string, parentField: string]>, optional: string[] = []): Adapter {
   const fields = children.map((c) => c[1]);
   return {
     key,
@@ -93,7 +93,10 @@ function nested(key: string, parent: string, children: Array<[collection: string
       return base.map((p) => {
         if (!isObj(p) || !validId(p.id)) return p;
         const item: Data = { ...p };
-        for (const k of kids) item[k.field] = k.list.filter((c) => c[k.parentField] === p.id).map((c) => without(c, [k.parentField]));
+        for (const k of kids) {
+          const items = k.list.filter((c) => c[k.parentField] === p.id).map((c) => without(c, [k.parentField]));
+          if (items.length || !optional.includes(k.field)) item[k.field] = items; // an optional list (receipts) is absent when empty, exactly as the app stores it
+        }
         return item;
       });
     },
@@ -142,8 +145,8 @@ const vault: Adapter = {
 export const ADAPTERS: Adapter[] = [
   settings,
   flat("categories", "category"),
-  // receipts stay on this device until they sync (Phase 6)
-  flat("expenses", "expense", { deviceOnly: ["receipts"] }),
+  // an expense's receipts are their own records (the files are on Cloudinary); the list is absent when empty, as the app stores it
+  nested("expenses", "expense", [["receipt", "receipts", "expenseId"]], ["receipts"]),
   flat("income", "income"),
   flat("recurring", "recurring"),
   multi("bills", [

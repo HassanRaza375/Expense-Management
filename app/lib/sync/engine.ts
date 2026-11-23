@@ -120,6 +120,12 @@ export class SyncEngine {
     return splitAll((k) => this.deps.store.read(k));
   }
 
+  /** True when the account has this record (it has been synced here, and is not a tombstone). */
+  isSynced(collection: string, id: string): boolean {
+    const b = this.base.get(recordKey(collection, id));
+    return Boolean(b && !b.deleted);
+  }
+
   /** Changes waiting to be sent. */
   pending(): number {
     return planPush(this.readLocal(), this.base).length;

@@ -91,6 +91,14 @@ export const prismaSyncRepo = (): SyncRepo => {
       const r = await db().$transaction([db().syncDoc.deleteMany({ where: { userId } }), db().syncCursor.deleteMany({ where: { userId } })]);
       return { removed: r[0].count };
     },
+    async get(userId, collection, id) {
+      const r = await db().syncDoc.findUnique({ where: { userId_collection_id: { userId, collection, id } } });
+      return r ? toRow(r as DocRow) : null;
+    },
+    async liveIds(userId, collection, parentId) {
+      const rows = await db().syncDoc.findMany({ where: { userId, collection, deletedAt: null, ...(parentId === undefined ? {} : { parentId }) }, select: { id: true } });
+      return rows.map((r) => r.id);
+    },
     async usage(userId) {
       const [c, n] = await Promise.all([db().syncCursor.findUnique({ where: { userId } }), db().syncDoc.count({ where: { userId, deletedAt: null } })]);
       return { revision: c?.revision ?? 0n, bytes: c?.bytes ?? 0, records: n };

@@ -20,6 +20,12 @@ export interface MediaStore {
   /** The root folder every file of this deployment lives under. */
   root: string;
   uploadImage(args: { publicId: string; bytes: Buffer; type: DeliveryType }): Promise<Uploaded>;
+  /** a receipt (a photo or a PDF) in PRIVATE delivery: it can only be reached through a signed, short-lived address */
+  uploadReceipt(args: { publicId: string; bytes: Buffer }): Promise<Uploaded>;
+  /** a signed address for a private file that stops working after `expiresInSeconds` */
+  signedUrl(publicId: string, opts: { format: string; expiresInSeconds: number }): string;
+  /** every private receipt file under the prefix */
+  listReceipts(prefix: string): Promise<Array<{ publicId: string; bytes: number }>>;
   destroy(publicId: string, type: DeliveryType): Promise<void>;
   /** Removes every file under the prefix (both delivery types). Returns how many were removed. */
   deleteByPrefix(prefix: string): Promise<number>;
@@ -49,6 +55,10 @@ export const mediaRoot = (env: Env): string => (env.CLOUDINARY_FOLDER || "hisaab
 
 /** The folder of one user's files. The id is the account's random id, never an email. */
 export const userPrefix = (root: string, userId: string): string => `${root}/u/${userId}`;
+export const receiptsPrefix = (root: string, userId: string): string => `${userPrefix(root, userId)}/receipts`;
+export const receiptPublicId = (root: string, userId: string, receiptId: string): string => `${receiptsPrefix(root, userId)}/${receiptId}`;
+/** the receipt id of a public id under the receipts folder (the last path segment) */
+export const receiptIdOf = (publicId: string): string => publicId.slice(publicId.lastIndexOf("/") + 1);
 export const avatarPublicId = (root: string, userId: string): string => `${userPrefix(root, userId)}/avatar`;
 
 /** The public URL of a profile photo: a square crop at the requested size. */
@@ -72,6 +82,29 @@ export function cloudinaryStore(env: Env): MediaStore | null {
         stream.end(bytes);
       });
       return { publicId: res.public_id, version: res.version, bytes: res.bytes };
+    },
+    async uploadReceipt({ publicId, bytes }) {
+      use();
+      const res = await new Promise<{ public_id: string; version: number; bytes: number }>((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream({ public_id: publicId, type: "authenticated", resource_type: "image", overwrite: true, invalidate: true }, (err, result) => (err || !result ? reject(err ?? new Error("no result")) : resolve(result)));
+        stream.end(bytes);
+      });
+      return { publicId: res.public_id, version: res.version, bytes: res.bytes };
+    },
+    signedUrl(publicId, { format, expiresInSeconds }) {
+      use();
+      return cloudinary.utils.private_download_url(publicId, format, { type: "authenticated", resource_type: "image", expires_at: Math.floor(Date.now() / 1000) + expiresInSeconds });
+    },
+    async listReceipts(prefix) {
+      use();
+      const out: Array<{ publicId: string; bytes: number }> = [];
+      let next: string | undefined;
+      do {
+        const r = (await cloudinary.api.resources({ type: "authenticated", resource_type: "image", prefix, max_results: 500, ...(next ? { next_cursor: next } : {}) })) as { resources: Array<{ public_id: string; bytes: number }>; next_cursor?: string };
+        for (const x of r.resources) out.push({ publicId: x.public_id, bytes: x.bytes });
+        next = r.next_cursor;
+      } while (next);
+      return out;
     },
     async destroy(publicId, type) {
       use();

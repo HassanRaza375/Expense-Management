@@ -64,6 +64,15 @@ export function fakeSyncRepo(): SyncRepo & { state: State; calls: string[] } {
       state.cursors.delete(userId);
       return { removed };
     },
+    async get(userId, collection, id) {
+      const r = state.rows.get(key(userId, collection, id));
+      return r ? { ...r, projection: { ...r.projection } } : null;
+    },
+    async liveIds(userId, collection, parentId) {
+      return [...state.rows]
+        .filter(([k, r]) => k.startsWith(`${userId}\u0000`) && r.collection === collection && !r.deleted && (parentId === undefined || r.projection.parentId === parentId))
+        .map(([, r]) => r.id);
+    },
     async usage(userId) {
       const c = state.cursors.get(userId);
       const records = [...state.rows].filter(([k, r]) => k.startsWith(`${userId}\u0000`) && !r.deleted).length;

@@ -10,6 +10,11 @@ import { userLocalStore } from "../lib/sync/localStore";
 import { clearHint, clearUserCache, guestRead, guestRecordCount, isReady, markReady, readHint, writeHint } from "../lib/sync/mode";
 import { downloadBackupFile } from "../lib/sync/backupDownload";
 import { singleFlight } from "../lib/sync/singleFlight";
+import { isPermanentRefusal, tooLargeForAccount, waitingReceipts } from "../lib/sync/receiptQueue";
+import { uploadReceiptFile } from "../lib/sync/receiptsApi";
+import { ApiError, friendly } from "../lib/account/api";
+import { getAttachment } from "../utils/attachments.js";
+import { useExpenses } from "./useExpenses.js";
 import { isUserCacheActive, onStorageChange } from "../utils/storage.js";
 import { saveSnapshot } from "../utils/snapshots.js";
 import { accountsEnabled, deleteAccount as deleteServerAccount, signOut as signOutServer, type Profile } from "./useAccount";
@@ -34,9 +39,11 @@ const state = reactive<{
   uploaded: number;
   message: string;
   choice: Choice | null;
+  /** the receipt files going up to the account (they follow the records: a file is only accepted for a receipt the account already has) */
+  uploads: { total: number; done: number; failed: number; message: string };
   /** true while the person is signed in but this device has not finished the first-sign-in choice */
   needsChoice: boolean;
-}>({ status: "idle", pending: 0, lastSyncAt: null, held: null, rejected: 0, uploaded: 0, message: "", choice: null, needsChoice: false });
+}>({ status: "idle", pending: 0, lastSyncAt: null, held: null, rejected: 0, uploaded: 0, message: "", choice: null, uploads: { total: 0, done: 0, failed: 0, message: "" }, needsChoice: false });
 
 let engine: SyncEngine | null = null;
 let userId: string | null = null;
@@ -79,6 +86,61 @@ function fail(e: unknown) {
   if (kind === "offline" || kind === "rate" || kind === "server") schedule(BACKOFF_MS[Math.min(failures++, BACKOFF_MS.length - 1)]);
 }
 
+const refusedReceipts = new Set<string>();
+let uploadingReceipts = false;
+
+/**
+ * Sends the receipt files that are waiting (utils: receiptQueue.ts: derived, so an interrupted upload just continues next time). A file is marked `remote` once it is safely
+ * there; the mark syncs. A refusal that will not change (too large, not a picture or PDF) leaves the file out for this session and says why; being offline or a server
+ * problem stops the loop quietly and the next run continues.
+ */
+async function uploadReceipts(): Promise<void> {
+  if (uploadingReceipts || !engine) return;
+  const e = engine;
+  const { expenses, markReceiptRemote } = useExpenses();
+  const waiting = waitingReceipts(expenses, () => true, (id) => e.isSynced("receipt", id), refusedReceipts);
+  if (!waiting.length) {
+    if (!state.uploads.total || state.uploads.done + state.uploads.failed >= state.uploads.total) state.uploads = { total: 0, done: 0, failed: state.uploads.failed, message: state.uploads.message };
+    return;
+  }
+  uploadingReceipts = true;
+  state.uploads = { total: waiting.length, done: 0, failed: 0, message: "" };
+  try {
+    for (const w of waiting) {
+      const id = w.receipt.id;
+      const att = await getAttachment(id);
+      if (!att?.blob) {
+        refusedReceipts.add(id); // the file is not on this device: nothing to upload from here
+        state.uploads.total--;
+        continue;
+      }
+      if (tooLargeForAccount(att.blob.size)) {
+        refusedReceipts.add(id);
+        state.uploads.failed++;
+        state.uploads.message = "A receipt is over 10 MB, so it stays only on this device.";
+        continue;
+      }
+      try {
+        await uploadReceiptFile(id, att.blob);
+        markReceiptRemote(w.expenseId, id);
+        state.uploads.done++;
+      } catch (err) {
+        if (err instanceof ApiError && isPermanentRefusal(err.status, err.code)) {
+          refusedReceipts.add(id);
+          state.uploads.failed++;
+          state.uploads.message = `A receipt could not be uploaded: ${friendly(err)} It stays on this device.`;
+        } else {
+          throw err; // offline or the service is having trouble: the rest waits
+        }
+      }
+    }
+  } catch {
+    /* the remaining files go up on a later run */
+  } finally {
+    uploadingReceipts = false;
+  }
+}
+
 /** One run at a time (in this tab, and across tabs where the Web Locks API exists). A request that arrives during a run is not lost: one more run follows it (singleFlight). */
 const flight = singleFlight(async (opts) => {
   if (!engine || !userId) return;
@@ -86,7 +148,9 @@ const flight = singleFlight(async (opts) => {
   const run = async () => {
     state.status = "syncing";
     try {
-      apply(await e.syncOnce(opts));
+      const report = await e.syncOnce(opts);
+      apply(report);
+      if (!report.held) await uploadReceipts();
     } catch (err) {
       fail(err);
     }

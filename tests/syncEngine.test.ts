@@ -21,12 +21,11 @@ function sortedById(v: unknown): unknown {
   return v;
 }
 
-/** The stored values without the parts that never leave a device (receipts, bill files, the theme), for comparing two devices. */
+/** The stored values without the parts that never leave a device (bill files, the theme), for comparing two devices. Receipts are synced records now. */
 function shared(d: Device): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const a of ADAPTERS) {
     const v = clone(d.get(a.key));
-    if (a.key === "expenses" && Array.isArray(v)) v.forEach((e: Row) => delete e.receipts);
     if (a.key === "bills" && v) (v as Row).bills?.forEach((b: Row) => (b.attachments = []));
     if (a.key === "settings" && v) delete (v as Row).theme;
     out[a.key] = sortedById(v);
@@ -45,7 +44,7 @@ describe("one device uploads, another receives", () => {
     await B.sync();
     expect(shared(B)).toEqual(shared(A));
     expect(B.get("expenses")).toHaveLength(3);
-    expect(byId(B.get("expenses"), "e1")).not.toHaveProperty("receipts");
+    expect(byId(B.get("expenses"), "e1")!.receipts).toEqual(byId(A.get("expenses"), "e1")!.receipts); // a receipt is a record of its own: it arrives with the expense (its file is on the account's storage)
     expect(byId(B.get("bills").bills, "b1").attachments).toEqual([]);
     expect(B.get("settings")).not.toHaveProperty("theme");
     expect(B.get("investments")[0].contributions).toHaveLength(1);
@@ -129,10 +128,10 @@ describe("the same expense edited on both devices", () => {
     expect(shared(A)).toEqual(shared(B));
   });
 
-  it("the other device's own receipts are never overwritten by the edit", async () => {
+  it("a receipt added on one device and an edit of the expense on the other both survive", async () => {
     const { A, B } = await setup();
     const b = B.get("expenses");
-    byId(b, "e1")!.receipts = [{ id: "mine", name: "b.jpg" }];
+    byId(b, "e1")!.receipts.push({ id: "mine", filename: "b.jpg", mimeType: "image/jpeg", size: 10 });
     B.set("expenses", b);
     const a = A.get("expenses");
     byId(a, "e1")!.amount = 1;
@@ -141,7 +140,7 @@ describe("the same expense edited on both devices", () => {
     await B.sync();
     const e1 = byId(B.get("expenses"), "e1")!;
     expect(e1.amount).toBe(1);
-    expect(e1.receipts).toEqual([{ id: "mine", name: "b.jpg" }]);
+    expect((e1.receipts as Row[]).map((r) => r.id).sort()).toEqual(["mine", "r1"]); // the account's receipt and this device's new one
   });
 });
 
@@ -311,7 +310,7 @@ describe("offline, then back online", () => {
 });
 
 describe("what a pull never touches", () => {
-  it("this device's theme and receipts, and bill files, survive account changes", async () => {
+  it("this device's theme survives account changes", async () => {
     const acct = newAccount();
     const A = await device("A", acct, sampleStorage());
     const B = await device("B", acct, { settings: { currencySymbol: "Rs", theme: "light" } });

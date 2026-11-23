@@ -11,6 +11,7 @@
 // ---------------------------------------------------------------------------
 
 export const MAX_RECEIPT_BYTES = 15 * 1024 * 1024 // per file, after any image shrinking
+export const REMOTE_MAX_RECEIPT_BYTES = 10 * 1024 * 1024 // in an account: Cloudinary's free-plan image limit (docs/DECISIONS.md D25)
 export const MAX_RECEIPTS_PER_EXPENSE = 5
 export const RECEIPT_ACCEPT = 'image/*,application/pdf'
 
@@ -23,12 +24,12 @@ export function formatBytes(bytes) {
 }
 
 /** A plain-sentence problem with adding this file, or null when it is fine. `existingCount` = receipts already on the expense. */
-export function validateReceiptFile(file, existingCount = 0) {
+export function validateReceiptFile(file, existingCount = 0, maxBytes = MAX_RECEIPT_BYTES) {
   if (!file || typeof file !== 'object') return 'Choose a file'
   const type = String(file.type || '')
   if (!(type.startsWith('image/') || type === 'application/pdf')) return 'A receipt must be a photo or a PDF'
   if (!(Number(file.size) > 0)) return 'That file is empty'
-  if (Number(file.size) > MAX_RECEIPT_BYTES) return `That file is too large (${formatBytes(file.size)}). The limit is ${formatBytes(MAX_RECEIPT_BYTES)}`
+  if (Number(file.size) > maxBytes) return `That file is too large (${formatBytes(file.size)}). The limit is ${formatBytes(maxBytes)}${maxBytes < MAX_RECEIPT_BYTES ? ' for receipts in an account' : ''}`
   if (existingCount >= MAX_RECEIPTS_PER_EXPENSE) return `An expense can have up to ${MAX_RECEIPTS_PER_EXPENSE} receipts`
   return null
 }

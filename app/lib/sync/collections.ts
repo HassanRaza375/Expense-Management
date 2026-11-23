@@ -17,6 +17,8 @@ export interface CollectionSpec {
   dayField?: string;
   /** the record field projected as integer minor units (amount * 100) */
   amountField?: string;
+  /** the record field projected as `sizeBytes` (receipts: the file's size; never its content or name) */
+  sizeField?: string;
   kindField?: string;
   kindDefault?: string;
   categoryField?: string;
@@ -31,6 +33,7 @@ export const COLLECTIONS: CollectionSpec[] = [
   { name: "settings", key: "settings", maxBytes: 16 * KB },
   { name: "category", key: "categories", maxBytes: 4 * KB },
   { name: "expense", key: "expenses", dayField: "date", amountField: "amount", kindField: "kind", kindDefault: "expense", categoryField: "categoryId", accountField: "accountId", maxBytes: 16 * KB },
+  { name: "receipt", key: "expenses", parent: "expense", parentField: "expenseId", sizeField: "size", maxBytes: 2 * KB },
   { name: "income", key: "income", dayField: "date", amountField: "amount", kindField: "sourceType", accountField: "accountId", maxBytes: 16 * KB },
   { name: "recurring", key: "recurring", amountField: "amount", categoryField: "categoryId", maxBytes: 8 * KB },
   { name: "billConnection", key: "bills", maxBytes: 8 * KB },
@@ -64,6 +67,10 @@ export const SINGLETON_ID: Record<string, string> = { settings: "settings", vaul
 
 /** The data version the sync protocol speaks. A client and a server with different ones refuse each other (the app must be updated). */
 export const SYNC_SCHEMA_VERSION = 3;
+
+/** A receipt in an account: at most this big (Cloudinary's free-plan image cap, D25) and at most this many per expense. */
+export const RECEIPT_REMOTE_MAX_BYTES = 10 * 1024 * 1024;
+export const RECEIPTS_PER_EXPENSE = 5;
 
 /** Per-user limits (D39). */
 export const LIMITS = {

@@ -60,6 +60,9 @@ async function undo() {
       <p class="m-0 text-xs text-muted-foreground">Last synced: {{ when }}</p>
       <p v-if="sync.message" class="m-0 text-sm" :class="sync.status === 'error' || sync.status === 'signedOut' || sync.status === 'mismatch' ? 'text-destructive' : 'text-muted-foreground'" data-testid="sync-message" role="status">{{ sync.message }}</p>
 
+      <p v-if="sync.uploads.total > sync.uploads.done + sync.uploads.failed" class="m-0 text-xs text-muted-foreground" data-testid="receipt-progress">Uploading receipts: {{ sync.uploads.done }} of {{ sync.uploads.total }}</p>
+      <p v-if="sync.uploads.message" class="m-0 text-xs text-status-warn" data-testid="receipt-upload-message" role="status">{{ sync.uploads.message }}</p>
+
       <div v-if="sync.held" class="flex flex-col gap-2 rounded-md border border-status-warn/50 p-3" data-testid="sync-held">
         <p class="m-0">This device is about to delete {{ sync.held.deletes }} of the {{ sync.held.of }} records in your account. That is more than usual, so nothing was sent.</p>
         <div class="flex flex-wrap gap-2">
@@ -78,7 +81,7 @@ async function undo() {
         <Button v-if="sync.status === 'signedOut' || sync.status === 'mismatch'" size="sm" @click="router.push('/account')">Sign in</Button>
       </div>
 
-      <p class="m-0 text-xs text-muted-foreground">Receipts and bill files stay on this device for now. The app lock and the theme are never synced. The Vault is synced only as the encrypted text it already is.</p>
+      <p class="m-0 text-xs text-muted-foreground">Receipts go to your account too, as private files that only you can open. Bill files stay on this device. The app lock and the theme are never synced. The Vault is synced only as the encrypted text it already is.</p>
     </CardContent>
   </Card>
 </template>

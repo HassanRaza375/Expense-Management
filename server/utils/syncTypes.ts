@@ -39,5 +39,9 @@ export interface SyncRepo {
   since(userId: string, since: bigint, limit: number): Promise<Row[]>;
   /** deletes every row of the user (account deletion); the cursor goes with them */
   removeAll(userId: string): Promise<{ removed: number }>;
+  /** one record of the user (null when there is none) */
+  get(userId: string, collection: string, id: string): Promise<Row | null>;
+  /** the ids of the user's live (not deleted) records of one collection, optionally only those under one parent */
+  liveIds(userId: string, collection: string, parentId?: string): Promise<string[]>;
   usage(userId: string): Promise<{ revision: bigint; bytes: number; records: number }>;
 }

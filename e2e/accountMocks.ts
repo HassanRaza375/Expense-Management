@@ -1,6 +1,8 @@
 import type { Browser, BrowserContext, Page, Route } from "@playwright/test";
 import { deflateSync } from "node:zlib";
 import { ServiceError } from "../server/utils/accountService";
+import type { MediaStore } from "../server/utils/media";
+import { cleanupReceipts, receiptUrl, uploadReceipt } from "../server/utils/receiptService";
 import { applyPush, pullSince, summaryOf } from "../server/utils/syncService";
 import { fakeSyncRepo } from "../tests/fakes/syncRepo";
 import { forbidRealServices } from "./fixtures";
@@ -61,6 +63,9 @@ export interface FakeServer {
   syncCalls: string[];
   /** answer every sync request as if this app were older than the server (409 schema_mismatch) */
   forceSchemaMismatch: boolean;
+  /** the receipt files the fake account storage holds (public id -> size), and the ones removed from it */
+  files: Map<string, number>;
+  destroyed: string[];
 }
 
 /** One browser (a device) of a test: its own storage, and a switch that cuts only its own network. */
@@ -71,17 +76,17 @@ export interface DeviceNet {
 }
 
 export function fakeServer(over: Partial<FakeServer> = {}): FakeServer {
-  return { users: new Map(), session: null, features: { google: false, email: false, passwordMin: 10 }, requests: [], offline: false, down: null, rateLimitSignIn: false, lastPhoto: null, signUpNeedsVerification: false, repo: fakeSyncRepo(), syncCalls: [], forceSchemaMismatch: false, ...over };
+  return { users: new Map(), session: null, features: { google: false, email: false, passwordMin: 10 }, requests: [], offline: false, down: null, rateLimitSignIn: false, lastPhoto: null, signUpNeedsVerification: false, repo: fakeSyncRepo(), syncCalls: [], forceSchemaMismatch: false, files: new Map(), destroyed: [], ...over };
 }
 
 /** The fields the fake server reads from a request body. */
 interface Body {
+  confirm?: string | boolean;
   name?: string;
   email?: string;
   password?: string;
   currentPassword?: string;
   newPassword?: string;
-  confirm?: string;
 }
 
 let counter = 0;
@@ -141,6 +146,32 @@ export async function installFakeAccountServer(page: Page, server: FakeServer = 
       return json(200, { success: true });
     }
     if (!me) return json(401, { error: "unauthenticated" });
+
+    if (path.startsWith("/api/receipts")) {
+      // the REAL receipt rules (server/utils/receiptService.ts) over the same in-memory account, with a fake file store
+      const media: MediaStore = {
+        cloudName: "demo",
+        root: "hisaab-test",
+        uploadImage: async () => ({ publicId: "x", version: 1, bytes: 1 }),
+        uploadReceipt: async ({ publicId, bytes }) => (server.files.set(publicId, bytes.length), { publicId, version: 1, bytes: bytes.length }),
+        signedUrl: (publicId, { format, expiresInSeconds }) => `${url.origin}/pwa-192x192.png?pid=${encodeURIComponent(publicId)}&format=${format}&expires=${expiresInSeconds}`,
+        listReceipts: async (prefix) => [...server.files].filter(([p]) => p.startsWith(prefix + "/")).map(([publicId, bytes]) => ({ publicId, bytes })),
+        destroy: async (publicId) => void (server.files.delete(publicId), server.destroyed.push(publicId)),
+        deleteByPrefix: async () => 0,
+      };
+      const deps = { repo: server.repo, media };
+      const user = { id: me.id, email: me.email, name: me.name, role: me.role };
+      const rid = decodeURIComponent(path.split("/")[3] ?? "");
+      try {
+        if (m === "PUT" && rid) return json(200, await uploadReceipt(deps, user, rid, new Uint8Array(buf ?? Buffer.alloc(0))));
+        if (m === "GET" && rid) return json(200, await receiptUrl(deps, user, rid));
+        if (m === "POST" && path === "/api/receipts/cleanup") return json(200, await cleanupReceipts(deps, user, body().confirm === true));
+      } catch (e) {
+        if (e instanceof ServiceError) return json(e.status, { error: e.code });
+        throw e;
+      }
+      return json(404, { error: "not_found" });
+    }
 
     if (path.startsWith("/api/sync/")) {
       server.syncCalls.push(`${m} ${path}`);

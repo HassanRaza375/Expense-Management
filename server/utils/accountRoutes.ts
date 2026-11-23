@@ -6,8 +6,12 @@ import { prismaAccountRepo } from "./accountRepo";
 import { jsonError } from "./api";
 import { useDb } from "./db";
 import { cloudinaryStore } from "./media";
+import { prismaSyncRepo } from "./syncRepo";
 
 export const accountDeps = (): Deps => ({ repo: prismaAccountRepo(useDb()), media: cloudinaryStore(process.env) });
+
+/** The dependencies of the receipt routes: the user's sync records and the media store. */
+export const receiptDeps = (): { repo: ReturnType<typeof prismaSyncRepo>; media: ReturnType<typeof cloudinaryStore> } => ({ repo: prismaSyncRepo(), media: cloudinaryStore(process.env) });
 
 /** Runs a service call; a ServiceError becomes the JSON refusal it names. */
 export async function run<T>(fn: () => Promise<T>): Promise<T> {
@@ -25,11 +29,11 @@ function declaredLength(event: H3Event): number {
 }
 
 /** The raw request body, refused (413) when it declares or turns out to be bigger than `max` bytes. */
-export async function readLimitedBytes(event: H3Event, max: number): Promise<Uint8Array> {
-  if (declaredLength(event) > max) throw jsonError(413, "photo_too_large");
+export async function readLimitedBytes(event: H3Event, max: number, code = "photo_too_large"): Promise<Uint8Array> {
+  if (declaredLength(event) > max) throw jsonError(413, code);
   const raw = await readRawBody(event, false);
   if (!raw) return new Uint8Array();
-  if (raw.length > max) throw jsonError(413, "photo_too_large");
+  if (raw.length > max) throw jsonError(413, code);
   return raw;
 }
 

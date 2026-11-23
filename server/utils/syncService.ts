@@ -42,6 +42,7 @@ function recordSchema(spec: CollectionSpec) {
   if (spec.parentField) shape[spec.parentField] = z.string().min(1).max(LIMITS.maxIdLength);
   for (const f of [spec.kindField, spec.categoryField, spec.accountField]) if (f) shape[f] = text.nullable().optional();
   if (spec.amountField) shape[spec.amountField] = z.union([z.number().finite(), z.literal(""), z.null()]).optional();
+  if (spec.sizeField) shape[spec.sizeField] = z.number().int().min(0).max(2 ** 40).optional();
   if (spec.dayField) shape[spec.dayField] = z.union([z.string().max(64), z.number(), z.null()]).optional();
   return z.looseObject(shape);
 }
@@ -68,7 +69,7 @@ export function projectionOf(spec: CollectionSpec, data: Record<string, unknown>
     kind,
     categoryId: spec.categoryField ? str(data[spec.categoryField]) : null,
     accountId: spec.accountField ? str(data[spec.accountField]) : null,
-    sizeBytes: null,
+    sizeBytes: spec.sizeField && typeof data[spec.sizeField] === "number" ? BigInt(data[spec.sizeField] as number) : null, // a file's size (already checked to be an integer by the record schema); never its name or content
   };
 }
 

@@ -476,6 +476,12 @@ Additive only; no change to stored expense shape in the first pass.
 - **Not verified / known limits:** receipts and bill files stay on the device until Phase 6; the account's records are capped at 25 MB; rate limits on the sync routes and the security review are Phase 8; two tabs of one browser share one cache (as the guest app always did; the sync runs under a Web Lock); email and Google sign-in remain unverified (no keys).
 - **Next:** Phase 6 (receipts on Cloudinary).
 
+### Session 17 - 2026-11-23 (Nuxt migration: Phase 6, receipts on Cloudinary)
+- **Done:** receipts as records (collection `receipt`, child of the expense, size projected), private Cloudinary storage (`PUT /api/receipts/:id`, `GET /api/receipts/:id` = a 5-minute signed address, `POST /api/receipts/cleanup`), the pure `receiptService` (ownership, bytes sniffed, 10 MB, 5 per expense, orphan clean-up), a derived upload queue with progress on the Sync card, viewing a receipt that is only in the account, the 10 MB limit in account mode, the remote clean-up in Settings. Decisions D49-D52.
+- **Result:** Vitest 283 (receipt service with an account A and B ownership matrix, the queue), e2e (a receipt uploaded after its record and viewable on the other device through a signed address, offline then reconnect, size and type refusals, delete + Undo + clean-up, the server's refusals, guest mode calls nothing, and "Upload this device's data" uploads receipts already on the device). **Live against real Cloudinary** (`scripts/live/receipts.mjs`, folder `hisaab-test`, left clean): files are AUTHENTICATED resources, no public or unsigned address works, a tampered signature is refused, the signed address returns the PNG and the PDF, B can neither view nor overwrite A's receipt, deleting the expense and its records keeps both files, the clean-up counts first then removes exactly the orphans, deleting the account removes its folder.
+- **Not verified:** the signed address was fetched from Node, not opened in a browser tab against real Cloudinary (the browser test uses a fake file store); Cloudinary's PDF delivery setting for the owner's real account may differ from the test account's (it worked here).
+- **Next:** Phase 7 (admin panel).
+
 ## J. Next recommended action
 
 **Protect your data before the first start of this version (it stamps data version 3):**

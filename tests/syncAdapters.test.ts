@@ -49,12 +49,13 @@ describe("split then join gives back exactly what was stored", () => {
     const joined = ADAPTER_BY_KEY.investments!.join(records, sample.investments) as Array<Record<string, unknown>>;
     expect((joined[0]!.contributions as Array<Record<string, unknown>>)[0]).not.toHaveProperty("fundId");
   });
-  it("the device-only parts never become part of a record: receipts, bill files, the theme", () => {
+  it("the device-only parts never become part of a record: bill files and the theme; a receipt is a record of its own, with its expense as parent", () => {
     const records = splitAll(readSample);
-    expect(records.get("expense")!.get("e1")).not.toHaveProperty("receipts");
+    expect(records.get("expense")!.get("e1")).not.toHaveProperty("receipts"); // flattened away
+    expect(records.get("receipt")!.get("r1")).toMatchObject({ expenseId: "e1", size: 1000 });
     expect(records.get("bill")!.get("b1")).not.toHaveProperty("attachments");
     expect(records.get("settings")!.get("settings")).not.toHaveProperty("theme");
-    expect(JSON.stringify([...records.values()].map((m) => [...m.values()]))).not.toMatch(/bill\.jpg|bill\.pdf|"dark"/);
+    expect(JSON.stringify([...records.values()].map((m) => [...m.values()]))).not.toMatch(/bill\.pdf|"dark"/);
   });
   it("unknown fields survive both ways", () => {
     const s = clone(sample);

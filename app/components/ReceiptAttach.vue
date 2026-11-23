@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { Paperclip, X, Eye } from '@lucide/vue'
 import { useExpenses } from '../composables/useExpenses.js'
 import { getAttachmentURL } from '../utils/attachments.js'
+import { receiptViewUrl } from '../lib/sync/receiptsApi'
 import { validateReceiptFile, formatBytes, RECEIPT_ACCEPT, MAX_RECEIPTS_PER_EXPENSE } from '../utils/receipts.js'
 import { Button } from '@/components/ui/button/index.js'
 import { Label } from '@/components/ui/label/index.js'
@@ -55,8 +56,24 @@ async function onPick(e) {
 
 async function viewSaved(r) {
   const url = await getAttachmentURL(r.id)
-  if (url) window.open(url, '_blank')
-  else error.value = 'That file is no longer stored on this device'
+  if (url) {
+    window.open(url, '_blank')
+    return
+  }
+  if (r.remote) {
+    // not on this device, but safely in the account: open the tab now (a popup blocker only allows it straight after the click), then send it to a short-lived signed address
+    const tab = window.open('', '_blank')
+    try {
+      const signed = await receiptViewUrl(r.id)
+      if (tab) tab.location.href = signed
+      else window.location.assign(signed)
+    } catch (e) {
+      tab?.close()
+      error.value = e?.status === 0 ? 'You are offline, and this receipt is kept in your account.' : 'This receipt could not be opened right now.'
+    }
+    return
+  }
+  error.value = 'That file is no longer stored on this device'
 }
 
 function viewStaged(file) {

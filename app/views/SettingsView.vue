@@ -1,11 +1,12 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Download, Upload, ChevronRight, MonitorDown, TriangleAlert } from '@lucide/vue'
 import { useSettings } from '../composables/useSettings.js'
 import { accountsEnabled, useAccount, refresh as refreshAccount } from '../composables/useAccount'
 import UserAvatar from '../components/UserAvatar.vue'
 import SyncCard from '../components/SyncCard.vue'
+import { receiptCleanup } from '../lib/sync/receiptsApi'
 import { deleteSyncDatabase } from '../lib/sync/baseStore'
 import { useAppLock } from '../composables/useAppLock.js'
 import { useInstallPrompt } from '../composables/useInstallPrompt.js'
@@ -178,6 +179,30 @@ async function refreshReceipts() {
   }
 }
 onMounted(refreshReceipts)
+
+// In an account: the files in the account that no receipt points at (a receipt removed, or an expense deleted), removed only after a confirmation, from Cloudinary too
+const remote = ref(null) // { orphans, bytes } or null
+const remoteOpen = ref(false)
+async function refreshRemote() {
+  if (!accountsOn || account.status !== 'signedIn') return
+  try {
+    remote.value = await receiptCleanup(false)
+  } catch {
+    remote.value = null // offline or not available: show nothing
+  }
+}
+watch(() => account.status, refreshRemote)
+onMounted(refreshRemote)
+async function cleanUpRemote() {
+  remoteOpen.value = false
+  try {
+    const r = await receiptCleanup(true)
+    toast.success(r.removed === 1 ? 'Removed 1 unused file from your account' : `Removed ${r.removed} unused files from your account`)
+  } catch {
+    toast.error('That did not work. Try again when you are online.')
+  }
+  await refreshRemote()
+}
 async function cleanUpReceipts() {
   const ids = receipts.value.orphans.map((o) => o.id)
   cleanupOpen.value = false
@@ -330,8 +355,25 @@ const usageKB = computed(() => (usageBytes() / 1024).toFixed(1))
           <Button variant="outline" size="sm" data-testid="receipts-cleanup" @click="cleanupOpen = true">Remove them</Button>
         </div>
         <p v-else class="m-0 text-xs text-muted-foreground">Deleting an expense keeps its receipts so that Undo always works. Anything left over would be listed here.</p>
+        <div v-if="remote && remote.orphans > 0" class="flex flex-wrap items-center gap-2" data-testid="remote-orphans">
+          <span class="text-sm text-muted-foreground">{{ remote.orphans }} file{{ remote.orphans === 1 ? '' : 's' }} ({{ formatBytes(remote.bytes) }}) in your account are not used by any receipt.</span>
+          <Button variant="outline" size="sm" data-testid="remote-cleanup" @click="remoteOpen = true">Remove them</Button>
+        </div>
       </CardContent>
     </Card>
+
+    <Dialog :open="remoteOpen" @update:open="(v) => (remoteOpen = v)">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Remove {{ remote?.orphans }} unused file{{ remote?.orphans === 1 ? '' : 's' }} from your account?</DialogTitle>
+          <DialogDescription>No receipt points at these files any more. This frees {{ formatBytes(remote?.bytes || 0) }} in your account and cannot be undone.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="ghost" @click="remoteOpen = false">Cancel</Button>
+          <Button variant="destructive" data-testid="remote-cleanup-confirm" @click="cleanUpRemote">Remove</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <Dialog :open="cleanupOpen" @update:open="(v) => (cleanupOpen = v)">
       <DialogContent>

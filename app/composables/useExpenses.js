@@ -1,8 +1,8 @@
 import { reactive, watch } from 'vue'
-import { get, set, STORAGE_KEYS, registerState } from '../utils/storage.js'
+import { get, set, STORAGE_KEYS, registerState, isUserCacheActive } from '../utils/storage.js'
 import { generateId } from '../utils/id.js'
 import { putAttachment, deleteAttachment } from '../utils/attachments.js'
-import { validateReceiptFile } from '../utils/receipts.js'
+import { validateReceiptFile, MAX_RECEIPT_BYTES, REMOTE_MAX_RECEIPT_BYTES } from '../utils/receipts.js'
 import { shrinkReceiptImage } from '../utils/receiptImage.js'
 
 const state = reactive(get(STORAGE_KEYS.EXPENSES, []))
@@ -150,10 +150,12 @@ export function useExpenses() {
   async function addReceipt(expenseId, file) {
     const expense = findById(expenseId)
     if (!expense) throw new Error('That expense no longer exists')
+    // in an account a receipt is also uploaded, so it is held to Cloudinary's smaller limit (guest mode: unchanged)
+    const limit = isUserCacheActive() ? REMOTE_MAX_RECEIPT_BYTES : MAX_RECEIPT_BYTES
     const problem = validateReceiptFile(file, (expense.receipts || []).length)
     if (problem) throw new Error(problem)
     const prepared = await shrinkReceiptImage(file)
-    const tooBig = validateReceiptFile(prepared, 0)
+    const tooBig = validateReceiptFile(prepared, 0, limit)
     if (tooBig) throw new Error(tooBig)
     const id = generateId()
     try {
@@ -171,6 +173,12 @@ export function useExpenses() {
     if (!Array.isArray(live.receipts)) live.receipts = []
     live.receipts.push(receipt)
     return receipt
+  }
+
+  // Marks a receipt as safely uploaded to the account (the mark syncs, so other devices know a copy exists).
+  function markReceiptRemote(expenseId, receiptId) {
+    const r = findById(expenseId)?.receipts?.find((x) => x.id === receiptId)
+    if (r && r.remote !== true) r.remote = true
   }
 
   // Removes the description first, then the file (a failure leaves an orphan file, never a dangling description).
@@ -214,6 +222,7 @@ export function useExpenses() {
     applyAccountChanges,
     undoAssignAccount,
     addReceipt,
+    markReceiptRemote,
     removeReceipt,
     addExpense,
     updateExpense,
