@@ -5,6 +5,8 @@ import { Download, Upload, ChevronRight, MonitorDown, TriangleAlert } from '@luc
 import { useSettings } from '../composables/useSettings.js'
 import { accountsEnabled, useAccount, refresh as refreshAccount } from '../composables/useAccount'
 import UserAvatar from '../components/UserAvatar.vue'
+import SyncCard from '../components/SyncCard.vue'
+import { deleteSyncDatabase } from '../lib/sync/baseStore'
 import { useAppLock } from '../composables/useAppLock.js'
 import { useInstallPrompt } from '../composables/useInstallPrompt.js'
 import { usageBytes } from '../utils/storage.js'
@@ -192,6 +194,7 @@ async function resetAllData() {
   await clearSnapshots() // a reset must not leave a readable copy of the data behind
   await clearAllAttachments().catch(() => {}) // ...nor the stored bill files and receipts
   localStorage.clear()
+  await deleteSyncDatabase().catch(() => {}) // and the sync memory of an account cache that no longer exists
   location.reload()
 }
 
@@ -216,6 +219,8 @@ const usageKB = computed(() => (usageBytes() / 1024).toFixed(1))
         </template>
       </CardContent>
     </Card>
+
+    <SyncCard />
 
     <Card>
       <CardHeader><CardTitle class="text-base">Profile</CardTitle></CardHeader>
@@ -344,7 +349,7 @@ const usageKB = computed(() => (usageBytes() / 1024).toFixed(1))
     <Card class="border-destructive/50">
       <CardHeader><CardTitle class="text-base text-destructive">Danger zone</CardTitle></CardHeader>
       <CardContent class="flex flex-col gap-2">
-        <p class="m-0 text-sm text-muted-foreground">Type "{{ REQUIRED_PHRASE }}" to permanently erase all local data.</p>
+        <p class="m-0 text-sm text-muted-foreground">Type "{{ REQUIRED_PHRASE }}" to permanently erase all local data.{{ accountsOn ? ' If you use an account, its copy in the account is not touched: sign in again to get it back.' : '' }}</p>
         <div class="flex flex-wrap gap-2">
           <Input v-model="confirmPhrase" type="text" :placeholder="REQUIRED_PHRASE" class="min-w-48 flex-1" />
           <Button variant="destructive" :disabled="confirmPhrase !== REQUIRED_PHRASE" @click="resetAllData">Reset all data</Button>

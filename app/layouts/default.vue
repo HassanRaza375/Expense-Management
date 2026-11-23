@@ -1,5 +1,5 @@
 <script setup>
-import { computed, watchEffect } from 'vue'
+import { computed, onMounted, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 import { Menu } from '@lucide/vue'
 import { useAppLock } from '../composables/useAppLock.js'
@@ -14,8 +14,16 @@ import { Button } from '../components/ui/button/index.js'
 import AppSidebar from '../components/AppSidebar.vue'
 import LockView from '../views/LockView.vue'
 import PwaUpdateToast from '../components/PwaUpdateToast.vue'
+import SyncStatus from '../components/SyncStatus.vue'
+import FirstSignInDialog from '../components/FirstSignInDialog.vue'
+import { startSync } from '../composables/useSync'
 
 ensureMeta()
+
+// account mode only: starts the sync engine (nothing happens in guest mode or while accounts are off)
+onMounted(() => {
+  startSync()
+})
 
 const { state: lockState } = useAppLock()
 const { settings } = useSettings()
@@ -37,6 +45,7 @@ const pendingRecurringCount = computed(() => {
   <div>
   <Toaster />
   <PwaUpdateToast />
+  <FirstSignInDialog />
   <LockView v-if="!lockState.isUnlocked" />
   <div v-else class="flex min-h-screen">
     <AppSidebar :pending-recurring-count="pendingRecurringCount" />
@@ -46,6 +55,8 @@ const pendingRecurringCount = computed(() => {
           <Menu class="h-5 w-5" />
         </Button>
         <span class="font-display text-base font-semibold">{{ route.meta.title }}</span>
+        <span class="flex-1" />
+        <SyncStatus />
       </header>
       <main class="min-w-0 flex-1 p-4 md:p-8">
         <slot />

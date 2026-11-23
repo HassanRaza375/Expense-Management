@@ -1,5 +1,5 @@
 import { reactive, watch } from 'vue'
-import { get, set, STORAGE_KEYS } from '../utils/storage.js'
+import { get, set, STORAGE_KEYS, registerState } from '../utils/storage.js'
 import { generateId } from '../utils/id.js'
 import { useExpenses } from './useExpenses.js'
 import { useVehicles } from './useVehicles.js'
@@ -30,6 +30,9 @@ const state = reactive(get(STORAGE_KEYS.VEHICLE_LOGS, []))
   }
   if (changed) set(STORAGE_KEYS.VEHICLE_LOGS, state)
 })()
+
+// lets a change that arrives from the account (account mode) reach this state without a reload
+registerState(STORAGE_KEYS.VEHICLE_LOGS, state)
 
 watch(
   state,

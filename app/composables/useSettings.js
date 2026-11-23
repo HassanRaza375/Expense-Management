@@ -1,5 +1,5 @@
 import { reactive, watch } from 'vue'
-import { get, set, STORAGE_KEYS } from '../utils/storage.js'
+import { get, set, STORAGE_KEYS, registerState } from '../utils/storage.js'
 
 const defaults = {
   profileName: 'You',
@@ -16,6 +16,9 @@ const defaults = {
 }
 
 const state = reactive({ ...defaults, ...get(STORAGE_KEYS.SETTINGS, {}) })
+
+// lets a change that arrives from the account (account mode) reach this state without a reload
+registerState(STORAGE_KEYS.SETTINGS, state)
 
 watch(
   state,

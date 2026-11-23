@@ -8,17 +8,32 @@
 //   3. `runStartup()` is a single shared promise, so everything that needs the outcome gets the same one.
 // If the stored data is from a newer version of Hisaab, or an update fails, the outcome is `blocked` and the app does not start; nothing more is written.
 import { prepareData } from "../utils/startup.js";
+import { activateIfSignedIn, type Hint } from "./sync/mode";
 
 export interface StartupOutcome {
   blocked: boolean;
   message: string;
   status?: string;
+  /** who this device is in ACCOUNT mode for (the synced keys live in their cache), or null in guest mode */
+  account?: Hint | null;
 }
 
 let started: Promise<StartupOutcome> | null = null;
 
-export function runStartup(): Promise<StartupOutcome> {
-  started ??= (prepareData() as Promise<StartupOutcome>).catch((err: unknown) => ({
+/**
+ * `accountsOn` is the public sync flag. After the data check (which always works on the guest data, whatever the mode), a device that is signed in and finished its
+ * first-sign-in choice is switched to ACCOUNT mode: the storage wrapper is pointed at that user's cache. Still before any composable loads.
+ */
+export function runStartup(accountsOn = false): Promise<StartupOutcome> {
+  started ??= (async () => {
+    const outcome = (await prepareData()) as StartupOutcome;
+    if (outcome.blocked) return outcome;
+    try {
+      return { ...outcome, account: activateIfSignedIn(accountsOn) };
+    } catch {
+      return { ...outcome, account: null }; // never let the account switch stop the app: guest mode is always available
+    }
+  })().catch((err: unknown) => ({
     blocked: true,
     message: `Hisaab could not check your saved data, so it did not start. (${err instanceof Error ? err.message : String(err)}) Nothing was changed.`,
   }));

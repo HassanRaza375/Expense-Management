@@ -57,6 +57,8 @@ const MESSAGES: Record<string, string> = {
   media_unavailable: "Photos are not available right now.",
   unavailable: "The account service is not available right now.",
   not_found: "The account service is not turned on.",
+  account_mismatch: "Another account is signed in on this browser. Sign out and sign in again.",
+  schema_mismatch: "This copy of Hisaab is out of date. Reload the page to update it.",
   forbidden_origin: "That request was refused. Reload the page and try again.",
   too_large: "That request was too large.",
 };

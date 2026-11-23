@@ -1,5 +1,5 @@
 import { reactive, watch } from 'vue'
-import { get, set, STORAGE_KEYS } from '../utils/storage.js'
+import { get, set, STORAGE_KEYS, registerState } from '../utils/storage.js'
 import { generateId } from '../utils/id.js'
 
 export const DEFAULT_MAINTENANCE_TAG_ID = 'tag-maintenance'
@@ -13,6 +13,9 @@ function loadInitial() {
 }
 
 const state = reactive(loadInitial())
+
+// lets a change that arrives from the account (account mode) reach this state without a reload
+registerState(STORAGE_KEYS.VEHICLE_TAGS, state)
 
 watch(
   state,

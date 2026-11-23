@@ -1,10 +1,10 @@
 // Every key the app keeps in localStorage is classified: `synced` (it travels to the account) or `device-only` (it never does). A test fails if a key is neither
 // (tests/syncInventory.test.ts), so a new key cannot be added without deciding what sync does with it (D18).
-import { ADAPTERS } from "./adapters";
+import { SYNCED_KEYS as KEYS } from "../../utils/syncedKeys.js";
 
 export type KeyClass = "synced" | "device-only" | "unknown";
 
-export const SYNCED_KEYS: string[] = ADAPTERS.map((a) => a.key);
+export const SYNCED_KEYS: string[] = KEYS;
 
 /** Device-only, with the reason. */
 export const DEVICE_ONLY_KEYS: Record<string, string> = {

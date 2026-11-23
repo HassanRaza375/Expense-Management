@@ -11,7 +11,9 @@ import { toast } from '@/components/ui/sonner/index.js'
 import UserAvatar from '../components/UserAvatar.vue'
 import AvatarCropDialog from '../components/AvatarCropDialog.vue'
 import { friendly } from '../lib/account/api'
-import { accountsEnabled, useAccount, refresh, signIn, signUp, signOut, signInWithGoogle, updateName, changePassword, uploadAvatar, removeAvatar, deleteAccount } from '../composables/useAccount'
+import { accountsEnabled, useAccount, refresh, signIn, signUp, signInWithGoogle, updateName, changePassword, uploadAvatar, removeAvatar } from '../composables/useAccount'
+import { beginFirstSignIn, resumeChoice, signOutEverywhere, deleteAccountEverywhere } from '../composables/useSync'
+import { isUserCacheActive } from '../utils/storage.js'
 
 // Your account. Guest mode (no account) is the app as it always was: everything stays on this device. An account is optional.
 const router = useRouter()
@@ -67,6 +69,11 @@ function submit() {
       if (r.needsVerification) note('Account created. Open the message we sent to your email address to confirm it, then sign in.')
     }
     form.value.password = ''
+    // the first time this account is used on this device: sets up sync (or opens the choice). Never merges anything by itself.
+    if (account.profile) {
+      const outcome = await beginFirstSignIn(account.profile)
+      if (outcome === 'blocked') note("This device still holds another account's data. Sign in as that account, or sign out of it first.")
+    }
   })
 }
 
@@ -122,21 +129,26 @@ function savePassword() {
   })
 }
 
-function leave() {
+// Sign out. In account mode this removes the account's copy from this device (the account keeps its own); if changes have not reached the account yet it asks first.
+const leaveBlocked = ref(0)
+function leave(discard = false) {
   guarded(async () => {
-    await signOut()
-    toast('Signed out. The data on this device is still here.')
+    const r = await signOutEverywhere({ discard })
+    leaveBlocked.value = r.blocked
   })
 }
+
+// Signed in, but this device has not finished the first-sign-in choice (the person chose "Not now")
+const needsSetup = computed(() => account.status === 'signedIn' && !!account.profile && !isUserCacheActive())
+const inAccountMode = isUserCacheActive()
 
 const confirmEmail = ref('')
 const canDelete = computed(() => account.profile && confirmEmail.value.trim().toLowerCase() === account.profile.email.toLowerCase())
 function removeAccount() {
   if (!canDelete.value) return
   guarded(async () => {
-    await deleteAccount(confirmEmail.value)
+    await deleteAccountEverywhere(confirmEmail.value) // in account mode a backup file is downloaded first; the page reloads into guest mode afterwards
     confirmEmail.value = ''
-    toast('Account deleted. The data on this device is still here.')
   })
 }
 </script>
@@ -206,6 +218,14 @@ function removeAccount() {
 
     <!-- signed in -->
     <template v-else-if="account.status === 'signedIn' && account.profile">
+      <Card v-if="needsSetup" data-testid="needs-setup">
+        <CardContent class="flex flex-wrap items-center gap-3 pt-6">
+          <Cloud class="h-5 w-5 shrink-0 text-muted-foreground" />
+          <p class="m-0 min-w-0 flex-1 text-sm">You are signed in, but this device is not syncing yet. Your data is only on this device until you choose how to start.</p>
+          <Button size="sm" data-testid="finish-setup" @click="resumeChoice(account.profile)">Set up sync</Button>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader><CardTitle class="text-base">Profile</CardTitle></CardHeader>
         <CardContent class="flex flex-col gap-4">
@@ -252,14 +272,26 @@ function removeAccount() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle class="text-base">Sign out</CardTitle><CardDescription>Ends the session on this device. The data on this device stays.</CardDescription></CardHeader>
-        <CardContent><Button variant="outline" :disabled="busy" data-testid="sign-out" @click="leave"><LogOut class="mr-1.5 h-4 w-4" /> Sign out</Button></CardContent>
+        <CardHeader>
+          <CardTitle class="text-base">Sign out</CardTitle>
+          <CardDescription>{{ inAccountMode ? "Ends the session and removes your account's copy from this device (your account keeps its own). The data you had on this device before signing in comes back." : 'Ends the session on this device. The data on this device stays.' }}</CardDescription>
+        </CardHeader>
+        <CardContent class="flex flex-col gap-3">
+          <div v-if="leaveBlocked" class="flex flex-col gap-2 rounded-md border border-destructive/50 p-3" data-testid="leave-blocked" role="alert">
+            <p class="m-0 text-sm">{{ leaveBlocked }} change{{ leaveBlocked === 1 ? ' has' : 's have' }} not reached your account yet (you may be offline). Signing out now would lose {{ leaveBlocked === 1 ? 'it' : 'them' }}.</p>
+            <div class="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" data-testid="leave-stay" @click="leaveBlocked = 0">Stay signed in</Button>
+              <Button variant="destructive" size="sm" :disabled="busy" data-testid="leave-anyway" @click="leave(true)">Sign out anyway</Button>
+            </div>
+          </div>
+          <div><Button variant="outline" :disabled="busy" data-testid="sign-out" @click="leave(false)"><LogOut class="mr-1.5 h-4 w-4" /> Sign out</Button></div>
+        </CardContent>
       </Card>
 
       <Card class="border-destructive/50">
         <CardHeader>
           <CardTitle class="text-base text-destructive">Delete account</CardTitle>
-          <CardDescription>Removes your account and everything stored for it on the server, including your profile photo. The data saved on this device is not deleted. This cannot be undone.</CardDescription>
+          <CardDescription>Removes your account and everything stored for it on the server, including your profile photo. {{ inAccountMode ? "A backup file of your account's data is downloaded first, because it will be the only copy. Anything you had saved on this device before signing in is not deleted." : 'The data saved on this device is not deleted.' }} This cannot be undone.</CardDescription>
         </CardHeader>
         <CardContent class="flex flex-col gap-2">
           <Label for="acc-confirm">Type your email address ({{ account.profile.email }}) to confirm</Label>

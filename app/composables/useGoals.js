@@ -1,11 +1,14 @@
 import { reactive, watch } from 'vue'
-import { get, set, STORAGE_KEYS } from '../utils/storage.js'
+import { get, set, STORAGE_KEYS, registerState } from '../utils/storage.js'
 import { generateId } from '../utils/id.js'
 import { localDayKey, isDayKey } from '../utils/reporting.js'
 import { validateGoal, goalProgress } from '../utils/goals.js'
 
 // Savings goals (Phase 5). All the arithmetic is in utils/goals.js (pure); this file only stores them.
 const state = reactive(get(STORAGE_KEYS.GOALS, []))
+
+// lets a change that arrives from the account (account mode) reach this state without a reload
+registerState(STORAGE_KEYS.GOALS, state)
 
 watch(
   state,

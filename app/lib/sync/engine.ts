@@ -13,7 +13,7 @@ import { clone, deepEqual, mergeData, type Data } from "./merge";
 import { planPush, type BaseEntry, type PushOp } from "./plan";
 import type { PullResponse, PushResponse, WireRecord } from "./protocol";
 
-export type SyncErrorKind = "offline" | "unauthenticated" | "disabled" | "schema" | "rate" | "server";
+export type SyncErrorKind = "offline" | "unauthenticated" | "disabled" | "schema" | "account" | "rate" | "server";
 
 export class SyncApiError extends Error {
   constructor(

@@ -1,5 +1,5 @@
 import { reactive, watch } from 'vue'
-import { get, set, STORAGE_KEYS } from '../utils/storage.js'
+import { get, set, STORAGE_KEYS, registerState } from '../utils/storage.js'
 import { generateId } from '../utils/id.js'
 import { localNoonISO, isDayKey, localDayKey } from '../utils/reporting.js'
 import { accountBalance, accountsOverview, accountLedger, unassignedSince, reconcileDifference, validateAccount, validateTransfer, validateAdjustment } from '../utils/accounts.js'
@@ -18,6 +18,9 @@ const state = reactive({
   transfers: Array.isArray(raw?.transfers) ? raw.transfers : [],
   adjustments: Array.isArray(raw?.adjustments) ? raw.adjustments : [],
 })
+
+// lets a change that arrives from the account (account mode) reach this state without a reload
+registerState(STORAGE_KEYS.ACCOUNTS, state)
 
 watch(
   state,

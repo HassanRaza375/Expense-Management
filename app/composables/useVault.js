@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { get, set, STORAGE_KEYS } from '../utils/storage.js'
+import { get, set, STORAGE_KEYS, registerState } from '../utils/storage.js'
 import { generateId } from '../utils/id.js'
 import { deriveEncryptionKey, encryptJSON, decryptJSON, randomSaltB64 } from '../utils/crypto.js'
 
@@ -14,6 +14,11 @@ const session = reactive({
   isSetUp: !!get(STORAGE_KEYS.VAULT, null),
   isUnlocked: false,
   data: null, // decrypted plaintext, memory-only while unlocked
+})
+
+// the vault set up (or changed) on another device arrives as ciphertext from the account: the page learns that it exists without a reload
+registerState(STORAGE_KEYS.VAULT, null, () => {
+  session.isSetUp = !!get(STORAGE_KEYS.VAULT, null)
 })
 
 let activeKey = null

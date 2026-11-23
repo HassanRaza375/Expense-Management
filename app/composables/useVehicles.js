@@ -1,8 +1,11 @@
 import { reactive, watch } from 'vue'
-import { get, set, STORAGE_KEYS } from '../utils/storage.js'
+import { get, set, STORAGE_KEYS, registerState } from '../utils/storage.js'
 import { generateId } from '../utils/id.js'
 
 const state = reactive(get(STORAGE_KEYS.VEHICLES, []))
+
+// lets a change that arrives from the account (account mode) reach this state without a reload
+registerState(STORAGE_KEYS.VEHICLES, state)
 
 watch(
   state,

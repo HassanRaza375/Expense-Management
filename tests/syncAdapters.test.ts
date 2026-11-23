@@ -15,6 +15,9 @@ const sample = sampleStorage();
 const readSample = (k: string) => sample[k];
 
 describe("every collection belongs to exactly one adapter, and every adapter key is a stored key", () => {
+  it("the plain-JS list the storage wrapper routes by is exactly the adapters' keys", () => {
+    expect([...SYNCED_KEYS].sort()).toEqual(ADAPTERS.map((a) => a.key).sort());
+  });
   it("covers all collections once", () => {
     const names = ADAPTERS.flatMap((a) => a.collections);
     expect(new Set(names).size).toBe(names.length);

@@ -1,5 +1,9 @@
-import type { Page, Route } from "@playwright/test";
+import type { Browser, BrowserContext, Page, Route } from "@playwright/test";
 import { deflateSync } from "node:zlib";
+import { ServiceError } from "../server/utils/accountService";
+import { applyPush, pullSince, summaryOf } from "../server/utils/syncService";
+import { fakeSyncRepo } from "../tests/fakes/syncRepo";
+import { forbidRealServices } from "./fixtures";
 
 // The browser tests never reach a real service. These helpers (1) turn the build-time sync flag ON in the browser, because the test build is made with it off, and
 // (2) answer every /api/ request from an in-memory fake of the account server, so the Account area can be tested end to end, including the failure states.
@@ -51,10 +55,21 @@ export interface FakeServer {
   /** the file a photo upload sent last */
   lastPhoto: { size: number; type: string; isJpeg: boolean } | null;
   signUpNeedsVerification: boolean;
+  /** the account's records: the REAL server rules (server/utils/syncService.ts) over the in-memory repository */
+  repo: ReturnType<typeof fakeSyncRepo>;
+  /** every sync request that reached the fake server, "METHOD path" */
+  syncCalls: string[];
+}
+
+/** One browser (a device) of a test: its own storage, and a switch that cuts only its own network. */
+export interface DeviceNet {
+  offline: boolean;
+  /** this device's own signed-in user's email (undefined = use the server-wide `session`, as the single-device tests do) */
+  session?: string | null;
 }
 
 export function fakeServer(over: Partial<FakeServer> = {}): FakeServer {
-  return { users: new Map(), session: null, features: { google: false, email: false, passwordMin: 10 }, requests: [], offline: false, down: null, rateLimitSignIn: false, lastPhoto: null, signUpNeedsVerification: false, ...over };
+  return { users: new Map(), session: null, features: { google: false, email: false, passwordMin: 10 }, requests: [], offline: false, down: null, rateLimitSignIn: false, lastPhoto: null, signUpNeedsVerification: false, repo: fakeSyncRepo(), syncCalls: [], ...over };
 }
 
 /** The fields the fake server reads from a request body. */
@@ -70,7 +85,7 @@ interface Body {
 let counter = 0;
 
 /** Answers /api/* from `server`. Returns the same object so a test can read `requests` and change `session`. */
-export async function installFakeAccountServer(page: Page, server: FakeServer = fakeServer()): Promise<FakeServer> {
+export async function installFakeAccountServer(page: Page, server: FakeServer = fakeServer(), net: DeviceNet = { offline: false }): Promise<FakeServer> {
   await page.route("**/api/**", async (route: Route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -78,10 +93,16 @@ export async function installFakeAccountServer(page: Page, server: FakeServer = 
     const buf = req.postDataBuffer();
     server.requests.push({ method: req.method(), path, body: buf && buf.length < 4096 ? buf.toString("utf8") : "", bytes: buf?.length ?? 0, contentType: req.headers()["content-type"] ?? "" });
     const json = (status: number, body: unknown) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
-    if (server.offline) return route.abort("failed");
+    if (server.offline || net.offline) return route.abort("failed");
     if (server.down) return json(server.down, { error: "unavailable" });
 
-    const me = server.session ? server.users.get(server.session) : undefined;
+    const sessionEmail = (): string | null => (net.session !== undefined ? net.session : server.session);
+    const setSession = (v: string | null) => {
+      if (net.session !== undefined) net.session = v;
+      else server.session = v;
+    };
+    const current = sessionEmail();
+    const me = current ? server.users.get(current) : undefined;
     const profile = (u: FakeUser) => ({ id: u.id, email: u.email, name: u.name, role: u.role, avatarUrl: u.hasPhoto ? `${url.origin}/pwa-192x192.png` : null });
     const body = (): Body => {
       try {
@@ -102,7 +123,7 @@ export async function installFakeAccountServer(page: Page, server: FakeServer = 
       if (server.users.has(String(b.email).toLowerCase())) return json(422, { code: "USER_ALREADY_EXISTS", message: "exists" });
       const u: FakeUser = { id: `fake-${++counter}`, name: b.name, email: String(b.email).toLowerCase(), password: b.password, hasPhoto: false, role: "user" };
       server.users.set(u.email, u);
-      if (!server.signUpNeedsVerification) server.session = u.email;
+      if (!server.signUpNeedsVerification) setSession(u.email);
       return json(200, { token: server.signUpNeedsVerification ? null : "t", user: { id: u.id } });
     }
     if (path === "/api/auth/sign-in/email" && m === "POST") {
@@ -110,14 +131,31 @@ export async function installFakeAccountServer(page: Page, server: FakeServer = 
       const b = body();
       const u = server.users.get(String(b.email).toLowerCase());
       if (!u || u.password !== b.password) return json(401, { code: "INVALID_EMAIL_OR_PASSWORD", message: "Invalid email or password" });
-      server.session = u.email;
+      setSession(u.email);
       return json(200, { token: "t", user: { id: u.id } });
     }
     if (path === "/api/auth/sign-out" && m === "POST") {
-      server.session = null;
+      setSession(null);
       return json(200, { success: true });
     }
     if (!me) return json(401, { error: "unauthenticated" });
+
+    if (path.startsWith("/api/sync/")) {
+      server.syncCalls.push(`${m} ${path}`);
+      const h = req.headers();
+      if (h["x-hisaab-schema"] !== "3") return json(409, { error: "schema_mismatch" });
+      if (h["x-hisaab-account"] !== me.id) return json(409, { error: "account_mismatch" });
+      try {
+        const raw = buf?.toString("utf8") || "{}";
+        if (path === "/api/sync/push" && m === "POST") return json(200, await applyPush(server.repo, me.id, JSON.parse(raw)));
+        if (path === "/api/sync/pull" && m === "POST") return json(200, await pullSince(server.repo, me.id, JSON.parse(raw).since));
+        if (path === "/api/sync/summary" && m === "GET") return json(200, await summaryOf(server.repo, me.id));
+      } catch (e) {
+        if (e instanceof ServiceError) return json(e.status, { error: e.code });
+        throw e;
+      }
+      return json(404, { error: "not_found" });
+    }
 
     if (path === "/api/auth/update-user" && m === "POST") {
       me.name = String(body().name);
@@ -143,12 +181,50 @@ export async function installFakeAccountServer(page: Page, server: FakeServer = 
     if (path === "/api/account" && m === "DELETE") {
       if (String(body().confirm).trim().toLowerCase() !== me.email) return json(400, { error: "confirmation_mismatch" });
       server.users.delete(me.email);
-      server.session = null;
+      setSession(null);
       return json(200, { deleted: true, filesRemoved: 0, cleanup: "done" });
     }
     return json(404, { error: "not_found" });
   });
   return server;
+}
+
+/** A user of the fake server, signed up before the test starts. */
+export function addUser(server: FakeServer, email: string, password = "a-long-password-1", name = "Reader"): FakeUser {
+  const u: FakeUser = { id: `fake-${++counter}`, name, email, password, hasPhoto: false, role: "user" };
+  server.users.set(email, u);
+  return u;
+}
+
+export interface Device {
+  context: BrowserContext;
+  page: Page;
+  net: DeviceNet;
+  /** console errors and page errors of this device (the shared guard only covers the default context) */
+  problems: string[];
+  /** requests that tried to leave this machine */
+  blocked: string[];
+}
+
+/**
+ * A second (or third) device: its own browser context, so its own localStorage and IndexedDB, talking to the SAME fake account server. `initScript` seeds its guest data.
+ * Console errors are collected in `problems` (an offline test expects some: it passes the patterns to allow).
+ */
+export async function newDevice(browser: Browser, server: FakeServer, opts: { initScript?: string; allow?: RegExp[]; viewport?: { width: number; height: number } } = {}): Promise<Device> {
+  const context = await browser.newContext({ baseURL: "http://localhost:3011", timezoneId: "Asia/Karachi", serviceWorkers: "block", viewport: opts.viewport ?? { width: 1280, height: 900 } });
+  const blocked = await forbidRealServices(context);
+  if (opts.initScript) await context.addInitScript(opts.initScript);
+  const page = await context.newPage();
+  const net: DeviceNet = { offline: false, session: null }; // its own session: signing in on one device does not sign in the other
+  await enableAccountsInBrowser(page);
+  await installFakeAccountServer(page, server, net);
+  const problems: string[] = [];
+  const allow = [/Service Worker registration blocked by Playwright/, ...(opts.allow ?? [])];
+  page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
+  page.on("console", (m) => {
+    if ((m.type() === "error" || m.type() === "warning") && !allow.some((re) => re.test(m.text()))) problems.push(`[${m.type()}] ${m.text()}`);
+  });
+  return { context, page, net, problems, blocked };
 }
 
 /** A valid PNG of the given size (a gradient), made without any library: for choosing a "photo" in a test. */

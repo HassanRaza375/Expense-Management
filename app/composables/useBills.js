@@ -1,5 +1,5 @@
 import { reactive, watch } from 'vue'
-import { get, set, STORAGE_KEYS } from '../utils/storage.js'
+import { get, set, STORAGE_KEYS, registerState } from '../utils/storage.js'
 import { generateId } from '../utils/id.js'
 import { putAttachment, deleteAttachment, getAttachment } from '../utils/attachments.js'
 import { useExpenses } from './useExpenses.js'
@@ -53,6 +53,9 @@ function defaultState() {
 const state = reactive(get(STORAGE_KEYS.BILLS, defaultState()))
 if (!state.connections) state.connections = []
 if (!state.bills) state.bills = []
+
+// lets a change that arrives from the account (account mode) reach this state without a reload
+registerState(STORAGE_KEYS.BILLS, state)
 
 watch(
   state,
