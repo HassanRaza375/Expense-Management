@@ -3,6 +3,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Download, Upload, ChevronRight, MonitorDown, TriangleAlert } from '@lucide/vue'
 import { useSettings } from '../composables/useSettings.js'
+import { accountsEnabled, useAccount, refresh as refreshAccount } from '../composables/useAccount'
+import UserAvatar from '../components/UserAvatar.vue'
 import { useAppLock } from '../composables/useAppLock.js'
 import { useInstallPrompt } from '../composables/useInstallPrompt.js'
 import { usageBytes } from '../utils/storage.js'
@@ -24,6 +26,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { toast } from '@/components/ui/sonner/index.js'
 
 const router = useRouter()
+
+// the optional account (only while accounts are turned on; guest mode shows no account card at all)
+const accountsOn = accountsEnabled()
+const account = useAccount()
+onMounted(() => {
+  if (accountsOn) refreshAccount()
+})
 
 const { settings, updateProfile, setCurrencySymbol, setCycleResetDay } = useSettings()
 const { changePassword } = useAppLock()
@@ -191,6 +200,23 @@ const usageKB = computed(() => (usageBytes() / 1024).toFixed(1))
 
 <template>
   <div class="flex max-w-2xl flex-col gap-4">
+    <Card v-if="accountsOn" data-testid="account-card">
+      <CardHeader><CardTitle class="text-base">Account</CardTitle></CardHeader>
+      <CardContent class="flex flex-wrap items-center gap-3">
+        <template v-if="account.status === 'signedIn' && account.profile">
+          <UserAvatar :profile="account.profile" :size="40" />
+          <span class="min-w-0 flex-1 truncate text-sm">{{ account.profile.email }}</span>
+          <Button variant="outline" size="sm" @click="router.push('/account')">Manage account</Button>
+        </template>
+        <template v-else>
+          <p class="m-0 min-w-0 flex-1 text-sm text-muted-foreground">
+            {{ account.status === 'offline' ? 'You seem to be offline.' : 'Your data stays on this device. An account is optional.' }}
+          </p>
+          <Button variant="outline" size="sm" @click="router.push('/account')">{{ account.status === 'signedOut' || account.status === 'idle' || account.status === 'loading' ? 'Sign in or create account' : 'Account' }}</Button>
+        </template>
+      </CardContent>
+    </Card>
+
     <Card>
       <CardHeader><CardTitle class="text-base">Profile</CardTitle></CardHeader>
       <CardContent class="flex flex-col gap-1.5">

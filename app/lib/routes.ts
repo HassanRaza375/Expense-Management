@@ -36,6 +36,8 @@ export const ROUTES: AppRoute[] = [
   { name: "lending", path: "/lending", view: "LendingView.vue", title: "Lending" },
   { name: "loanDetail", path: "/lending/:id", view: "LoanDetailView.vue", title: "Loan" },
   { name: "settings", path: "/settings", view: "SettingsView.vue", title: "Settings" },
+  // the optional account (sign in, photo, delete). Only exists while accounts are turned on: with the flag off the page sends you to Settings.
+  { name: "account", path: "/account", view: "AccountView.vue", title: "Account" },
   // the "Hisaab did not start" screen: no layout, no composable (app/lib/startup.ts)
   { name: "startupBlocked", path: "/startup-blocked", view: "StartupBlockedView.vue", title: "Hisaab", layout: false },
   // anything else goes to the dashboard (the old catch-all). Server routes (/api/*) never reach the page router.

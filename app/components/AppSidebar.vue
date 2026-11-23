@@ -1,8 +1,9 @@
 <script setup>
 import { watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { LayoutDashboard, Receipt, Banknote, Landmark, Scale, PiggyBank, ReceiptText, Repeat, Tags, Target, Lock, Package, Bike, HandCoins, ChartCandlestick, Settings, Sun, Moon, BookText } from '@lucide/vue'
+import { UserRound, LayoutDashboard, Receipt, Banknote, Landmark, Scale, PiggyBank, ReceiptText, Repeat, Tags, Target, Lock, Package, Bike, HandCoins, ChartCandlestick, Settings, Sun, Moon, BookText } from '@lucide/vue'
 import { useSettings } from '../composables/useSettings.js'
+import { accountsEnabled } from '../composables/useAccount'
 import { useSidebar } from '../composables/useSidebar.js'
 import { cn } from '@/lib/utils.js'
 import { Button } from '@/components/ui/button/index.js'
@@ -21,7 +22,9 @@ watch(
   () => sidebar.closeMobile()
 )
 
-const items = [
+const accountsOn = accountsEnabled()
+
+const baseItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/expenses', label: 'Expenses', icon: Receipt },
   { path: '/income', label: 'Income', icon: Banknote },
@@ -39,6 +42,8 @@ const items = [
   { path: '/lending', label: 'Lending', icon: HandCoins },
   { path: '/settings', label: 'Settings', icon: Settings },
 ]
+// the Account entry exists only while accounts are turned on (guest mode: the sidebar is exactly what it was)
+const items = accountsOn ? [...baseItems.slice(0, -1), { path: '/account', label: 'Account', icon: UserRound }, baseItems[baseItems.length - 1]] : baseItems
 </script>
 
 <template>
