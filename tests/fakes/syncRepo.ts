@@ -1,5 +1,5 @@
 // An in-memory SyncRepo for unit tests: the same rules as the Prisma implementation (per-user rows, a per-user cursor, atomic transactions) with no database.
-// A transaction works on a copy and keeps it only if the callback finishes; "two devices at once" is modelled by running transactions one after another (the
+// A transaction works on a copy and keeps it only if the callback finishes; "two devices at once" is modelled by queueing transactions one after another (the
 // real store serialises them with `SELECT ... FOR UPDATE` on the cursor row).
 import type { Row, SyncRepo, Tx } from "../../server/utils/syncTypes";
 
@@ -14,6 +14,7 @@ const clone = (s: State): State => ({ rows: new Map([...s.rows].map(([k, v]) => 
 export function fakeSyncRepo(): SyncRepo & { state: State; calls: string[] } {
   let state: State = { rows: new Map(), cursors: new Map() };
   const calls: string[] = [];
+  let queue: Promise<void> = Promise.resolve();
   const txFor = (s: State): Tx => ({
     async lockCursor(userId) {
       if (!s.cursors.has(userId)) s.cursors.set(userId, { revision: 0n, bytes: 0 });
@@ -33,10 +34,15 @@ export function fakeSyncRepo(): SyncRepo & { state: State; calls: string[] } {
   const repo: SyncRepo = {
     async transaction(userId, fn) {
       calls.push(`transaction:${userId}`);
-      const work = clone(state);
-      const result = await fn(txFor(work));
-      state = work;
-      return result;
+      // one at a time, like the real store (`SELECT ... FOR UPDATE` on the cursor row): a transaction that starts while another is running waits for it
+      const run = queue.then(async () => {
+        const work = clone(state);
+        const result = await fn(txFor(work));
+        state = work;
+        return result;
+      });
+      queue = run.then(() => undefined, () => undefined);
+      return run;
     },
     async since(userId, since, limit) {
       calls.push(`since:${userId}`);

@@ -61,9 +61,9 @@ describe("no route takes the user from the caller", () => {
     }
   });
 
-  it("the only body a route reads is `confirm` (account deletion), and the photo bytes", () => {
-    const reads = files.map(rel).filter((f) => /readSmallJson|readLimitedBytes|readBody|readRawBody/.test(readFileSync(path.join(apiDir, f), "utf8")));
-    expect(reads.sort()).toEqual(["account/avatar.post.ts", "account/index.delete.ts"]);
+  it("the only bodies a route reads are `confirm` (account deletion), the photo bytes, and the sync operations (which carry records, never a user)", () => {
+    const reads = files.map(rel).filter((f) => /readSmallJson|readLimitedBytes|readBody|readRawBody|readJsonLimited/.test(readFileSync(path.join(apiDir, f), "utf8")));
+    expect(reads.sort()).toEqual(["account/avatar.post.ts", "account/index.delete.ts", "sync/pull.post.ts", "sync/push.post.ts"]);
     expect(readFileSync(path.join(apiDir, "account/index.delete.ts"), "utf8")).toMatch(/body\.confirm/);
   });
 
