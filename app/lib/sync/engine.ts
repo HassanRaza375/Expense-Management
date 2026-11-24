@@ -186,7 +186,7 @@ export class SyncEngine {
     while (i < ops.length) {
       const batch: PushOp[] = [];
       let bytes = 0;
-      while (i < ops.length && batch.length < LIMITS.maxOpsPerPush) {
+      while (i < ops.length && batch.length < LIMITS.clientBatchOps) {
         const size = JSON.stringify(ops[i]).length;
         if (batch.length && bytes + size > MAX_BATCH_BYTES) break;
         bytes += size;

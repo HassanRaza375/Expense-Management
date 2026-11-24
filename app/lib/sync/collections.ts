@@ -74,7 +74,10 @@ export const RECEIPTS_PER_EXPENSE = 5;
 
 /** Per-user limits (D39). */
 export const LIMITS = {
+  /** the most operations the SERVER accepts in one push (older copies of the app may still send this many) */
   maxOpsPerPush: 200,
+  /** the most operations this app SENDS in one push. One push is one database transaction; over a slow link to the database 200 operations took longer than the transaction's limit (found on the first real upload, 268 records). */
+  clientBatchOps: 20,
   maxPushBytes: 1024 * 1024,
   maxPullRecords: 500,
   maxUserBytes: 25 * 1024 * 1024,

@@ -82,7 +82,7 @@ export const txFor = (db: Db): Tx => ({
 export const prismaSyncRepo = (): SyncRepo => {
   const db = () => useDb();
   return {
-    transaction: (_userId, fn) => db().$transaction(async (t) => fn(txFor(t)), { timeout: 15_000, maxWait: 5_000 }),
+    transaction: (_userId, fn) => db().$transaction(async (t) => fn(txFor(t)), { timeout: 30_000, maxWait: 10_000 }),
     async since(userId, since, limit) {
       const rows = await db().syncDoc.findMany({ where: { userId, revision: { gt: since } }, orderBy: { revision: "asc" }, take: limit });
       return rows.map((r) => toRow(r as DocRow));

@@ -496,6 +496,10 @@ Additive only; no change to stored expense shape in the first pass.
 - **Not verified:** a real reset email, Google sign-in (no keys); a signed receipt link opened in a browser tab against real Cloudinary; production (never touched). Startup with the flag ON was not measured (the shipping default is off).
 - **Next (the owner):** docs/DEPLOY.md, section 2.
 
+### Session 20 - 2026-11-24 (first production upload)
+- The first "Upload this device's data" in production failed with `P2028` (see D62): 200 operations in one transaction exceeded the 15 s limit over the long link to the database. Fixed on branch `fix-push-batch-size` (20 operations per push, 30 s transaction limit), `verify` green (321 + 225), live `sync` check passes. Nothing was lost: the transaction rolled back and the device data was untouched.
+- **Lesson:** the live checks ran from the same machine as the database and pushed a few dozen records, so they could not show latency problems. A check with a few hundred records, or from a far region, belongs next to the first real upload.
+
 ## J. Next recommended action
 
 **Protect your data before the first start of this version (it stamps data version 3):**

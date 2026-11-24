@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ADAPTERS } from "../app/lib/sync/adapters";
 import { SyncApiError } from "../app/lib/sync/engine";
-import { recordKey } from "../app/lib/sync/collections";
+import { LIMITS, recordKey } from "../app/lib/sync/collections";
 import { clone, sampleStorage } from "./helpers/syncData";
 import { device, newAccount, type Device } from "./helpers/syncHarness";
 
@@ -272,6 +272,18 @@ describe("offline, then back online", () => {
     expect(byId(B.get("expenses"), "e1")!.amount).toBe(2);
   });
 
+  it("no push carries more than LIMITS.clientBatchOps operations, however many records are waiting (one push is one database transaction)", async () => {
+    const acct = newAccount();
+    const A = await device("A", acct, sampleStorage());
+    const many = Array.from({ length: 268 }, (_, i) => ({ id: `y${i}`, date: "2026-11-20T07:00:00.000Z", amount: i + 1, categoryId: "cat-food", note: "", createdAt: "2026-11-20T07:00:00.000Z" }));
+    A.set("expenses", many);
+    await A.sync();
+    expect(serverLive(acct, "expense")).toHaveLength(268);
+    expect(A.calls.push.length).toBeGreaterThan(268 / LIMITS.clientBatchOps - 1);
+    for (const ops of A.calls.push) expect(ops.length).toBeLessThanOrEqual(LIMITS.clientBatchOps);
+    expect(LIMITS.clientBatchOps).toBeLessThan(LIMITS.maxOpsPerPush); // the server still accepts what an older copy of the app sends
+  });
+
   it("going offline in the middle of a run keeps what was already sent and sends the rest later", async () => {
     const acct = newAccount();
     const A = await device("A", acct, sampleStorage());
@@ -282,11 +294,11 @@ describe("offline, then back online", () => {
       if (++calls === 2) throw new SyncApiError("offline");
       return push(ops);
     };
-    // 450 records go out as three batches of at most 200 (the second fails)
+    // 450 records go out in batches of at most LIMITS.clientBatchOps (the second fails)
     const many = Array.from({ length: 450 }, (_, i) => ({ id: `x${i}`, date: "2026-11-20T07:00:00.000Z", amount: i + 1, categoryId: "cat-food", note: "", createdAt: "2026-11-20T07:00:00.000Z" }));
     A.set("expenses", many);
     await expect(A.sync()).rejects.toMatchObject({ kind: "offline" });
-    expect(serverLive(acct, "expense").length).toBeGreaterThan(150); // the first batch (200 operations, a few of them other collections) is there
+    expect(serverLive(acct, "expense").length).toBeGreaterThan(0); // the first batch (a few operations, some of them other collections) is there
     expect(serverLive(acct, "expense").length).toBeLessThan(450);
     expect(A.engine.pending()).toBeGreaterThan(0);
     real.deps.api.push = push;
@@ -301,9 +313,12 @@ describe("offline, then back online", () => {
     A.loseNextPushAnswer = true;
     await expect(A.sync()).rejects.toMatchObject({ kind: "offline" });
     const after = acct.repo.state.cursors.get(acct.userId)!.revision;
-    expect(after).toBeGreaterThan(0n); // the server did apply it
+    expect(after).toBeGreaterThan(0n); // the server did apply the first batch
     await A.sync();
-    expect(acct.repo.state.cursors.get(acct.userId)!.revision).toBe(after); // the repeat wrote nothing
+    // Pushes go in small batches, so the later batches are sent only now. Every operation uses exactly one revision, so when the repeat of the lost batch has wasted
+    // none, the account's revision equals the number of records it holds (each applied once, none twice).
+    const held = [...acct.repo.state.rows.keys()].filter((k) => k.startsWith(`${acct.userId}\u0000`)).length;
+    expect(acct.repo.state.cursors.get(acct.userId)!.revision).toBe(BigInt(held));
     expect(serverLive(acct, "expense")).toEqual(["e1", "e2", "e3"]);
     expect(A.engine.pending()).toBe(0);
   });
