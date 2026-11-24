@@ -1,0 +1,145 @@
+// Hisaab server database: PostgreSQL (Aiven) through Prisma 7.10.1. See docs/NUXT_PLAN.md section 4 and docs/DECISIONS.md D11-D17.
+// The connection URL is not here: it is in prisma.config.ts (for the CLI) and read from DATABASE_URL at request time (server/utils/db.ts).
+// Migrations are additive and written offline (`prisma migrate diff`); the owner applies them with `prisma migrate deploy`, never at runtime.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../server/generated/prisma" // gitignored; `prisma generate` runs in postinstall and needs no database
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---- Sync: one row per record (document-record design) ---------------------------------------------------------------------------------------
+//
+// `data` is the app's own record exactly as the browser has it, validated per collection by zod (app/lib/sync/). It is NEVER read by the admin panel.
+// The projection columns are filled by the SERVER from the validated record: they are all the admin reports on, so notes, receipts, the vault and
+// bill attachments are unreachable by construction. `dayKey` is the local day the CLIENT computed ('YYYY-MM-DD'); the server only checks its form
+// and that it is a real date, and never derives a day or month from a timestamp. Money is integer minor units (amount * 100, rounded).
+model SyncDoc {
+  userId     String
+  collection String // allow-listed: "expense", "income", "fund", "fundContribution", "receipt", ...
+  id         String // the record's own id
+  data       Json? // null when deleted
+  version    Int       @default(1) // the record's own counter, +1 per accepted write
+  revision   BigInt // user-wide change cursor (from SyncCursor): drives pull
+  updatedAt  DateTime  @default(now()) @updatedAt // server time, never the client's
+  deletedAt  DateTime? // tombstone: a delete is never a row removal
+  bytes      Int       @default(0) // size of `data`, for the per-user cap
+
+  parentId    String? // fundId / loanId / expenseId / goalId ... for flattened children
+  dayKey      String? // 'YYYY-MM-DD', attached by the client
+  amountMinor BigInt?
+  kind        String? // expense | refund | income source | loan direction | bill status | ...
+  categoryId  String?
+  accountId   String?
+  sizeBytes   BigInt? // receipts: the file's size (never its content or name)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, collection, id])
+  @@index([userId, revision])
+  @@index([collection, dayKey])
+  @@index([userId, collection, dayKey])
+  @@index([userId, collection, parentId])
+}
+
+// One row per user: the revision counter (bumped inside the push transaction, locked FOR UPDATE, so two devices' pushes are ordered) and the bytes stored.
+model SyncCursor {
+  userId    String   @id
+  revision  BigInt    @default(0)
+  bytes     Int       @default(0)
+  updatedAt DateTime  @default(now()) @updatedAt // "last sync" in the admin panel
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Every admin write (edit, role change, disable, delete) is recorded here: who, what, when, and a before/after SUMMARY (never notes or other private content).
+// No foreign key on purpose: the log must outlive the accounts it talks about, including the actor's.
+model AuditLog {
+  id         String   @id
+  at         DateTime @default(now())
+  actorId    String?
+  actorEmail String?
+  action     String // e.g. "user.update", "user.role", "user.disable", "user.delete"
+  targetType String // "user"
+  targetId   String?
+  summary    Json // { before: {...}, after: {...} } of non-private fields
+
+  @@index([at])
+  @@index([actorId])
+  @@index([targetId])
+}
+
+// ---- Better Auth (models and field names are the library's own; the additional fields are ours) ---------------------------------------------------
+
+model User {
+  id             String   @id
+  name           String
+  email          String   @unique
+  emailVerified  Boolean  @default(false)
+  image          String? // never filled from Google: the profile mapping sets it to null
+  role           String   @default("user") // "user" or "superadmin"; set only by scripts/seed-super-admin.mjs, never by a request (input: false)
+  disabled       Boolean  @default(false) // set by the admin panel; a disabled user cannot sign in or sync
+  avatarPublicId String? // the Cloudinary public id of the user's own photo
+  avatarVersion  Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  sessions    Session[]
+  accounts    Account[]
+  syncDocs    SyncDoc[]
+  syncCursor  SyncCursor?
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String? // a hash written by Better Auth: never logged, never shown to the admin
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@index([identifier])
+}
+
+// storage: "database" (a serverless host has no shared memory for an in-memory store)
+model RateLimit {
+  id          String @id
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+}

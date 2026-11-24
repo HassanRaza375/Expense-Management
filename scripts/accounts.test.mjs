@@ -15,8 +15,8 @@ import {
   validateTransfer,
   validateAdjustment,
   balanceDisplay,
-} from '../src/utils/accounts.js'
-import { localDayKey, addDays } from '../src/utils/reporting.js'
+} from '../app/utils/accounts.js'
+import { localDayKey, addDays } from '../app/utils/reporting.js'
 
 let seq = 0
 const noon = (y, m, d) => new Date(y, m - 1, d, 12).toISOString() // what the forms store now
@@ -320,8 +320,8 @@ test('every ledger ends at its account balance, on random data', () => {
 })
 
 test('a transfer is not a transaction: the day sums of expenses/income are identical with or without transfers and corrections', async () => {
-  const { summarize, filterTransactions } = await import('../src/utils/reporting.js')
-  const { computeBudget } = await import('../src/utils/budgetMath.js')
+  const { summarize, filterTransactions } = await import('../app/utils/reporting.js')
+  const { computeBudget } = await import('../app/utils/budgetMath.js')
   const world = randomWorld(9)
   const plain = { expenses: world.data.expenses.map(({ accountId, ...rest }) => rest), income: world.data.income.map(({ accountId, ...rest }) => rest) }
   assert.deepEqual(summarize(filterTransactions(world.data.expenses, { period: 'all' }), { now: NOW }), summarize(filterTransactions(plain.expenses, { period: 'all' }), { now: NOW }))
@@ -355,7 +355,7 @@ test('addDays-based boundary: the day before the opening day is out, the opening
 })
 
 test('accounts.js stays pure: imports only reporting.js, no browser globals', () => {
-  const src = readFileSync(fileURLToPath(new URL('../src/utils/accounts.js', import.meta.url)), 'utf8')
+  const src = readFileSync(fileURLToPath(new URL('../app/utils/accounts.js', import.meta.url)), 'utf8')
   const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/.*$/gm, '')
   assert.deepEqual([...code.matchAll(/^\s*import[^\n]*from\s+'([^']+)'/gm)].map((m) => m[1]), ['./reporting.js'])
   assert.doesNotMatch(code, /localStorage|document|window|\.date\b[^\n;]*\.slice\(/)

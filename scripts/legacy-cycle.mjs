@@ -1,6 +1,6 @@
-// REFERENCE ONLY (tests). Faithful copies of the ORIGINAL cycle helpers that used to live in src/utils/date.js, kept so
+// REFERENCE ONLY (tests). Faithful copies of the ORIGINAL cycle helpers that used to live in app/utils/date.js, kept so
 // the parity tests can prove the new day-key math gives identical results for reset days 1-28 and so the known defects
-// of the originals stay documented and demonstrable. Nothing in src/ may import this file.
+// of the originals stay documented and demonstrable. Nothing in app/ may import this file.
 
 export const MS_DAY = 24 * 60 * 60 * 1000
 

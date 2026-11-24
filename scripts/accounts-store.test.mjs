@@ -20,15 +20,15 @@ globalThis.localStorage = {
 installFakeIndexedDB()
 
 const { nextTick } = await import('vue')
-const { useAccounts } = await import('../src/composables/useAccounts.js')
-const { useExpenses } = await import('../src/composables/useExpenses.js')
-const { useIncome } = await import('../src/composables/useIncome.js')
-const { useSettings } = await import('../src/composables/useSettings.js')
-const { useBudget } = await import('../src/composables/useBudget.js')
-const { buildBackup, parseBackup, summarizeBackup, applyBackup, BACKUP_MODULES, CURRENT_SCHEMA_VERSION } = await import('../src/utils/backup.js')
-const { saveSnapshot, listSnapshots } = await import('../src/utils/snapshots.js')
-const { STORAGE_KEYS } = await import('../src/utils/storage.js')
-const { localDayKey } = await import('../src/utils/reporting.js')
+const { useAccounts } = await import('../app/composables/useAccounts.js')
+const { useExpenses } = await import('../app/composables/useExpenses.js')
+const { useIncome } = await import('../app/composables/useIncome.js')
+const { useSettings } = await import('../app/composables/useSettings.js')
+const { useBudget } = await import('../app/composables/useBudget.js')
+const { buildBackup, parseBackup, summarizeBackup, applyBackup, BACKUP_MODULES, CURRENT_SCHEMA_VERSION } = await import('../app/utils/backup.js')
+const { saveSnapshot, listSnapshots } = await import('../app/utils/snapshots.js')
+const { STORAGE_KEYS } = await import('../app/utils/storage.js')
+const { localDayKey } = await import('../app/utils/reporting.js')
 
 const acc = useAccounts()
 const ex = useExpenses()
@@ -244,14 +244,14 @@ test('Dashboard/Budget numbers are IDENTICAL before and after creating accounts,
 test('no spending/reporting module knows about accounts', () => {
   const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
   // None of them may import the account maths or the accounts store.
-  for (const f of ['../src/utils/reporting.js', '../src/utils/budgetMath.js', '../src/composables/useBudget.js', '../src/utils/csvExport.js']) {
+  for (const f of ['../app/utils/reporting.js', '../app/utils/budgetMath.js', '../app/composables/useBudget.js', '../app/utils/csvExport.js']) {
     assert.doesNotMatch(read(f), /accounts\.js|accountsView|useAccounts|STORAGE_KEYS\.ACCOUNTS/, f)
   }
   // The budget does not know about accounts at all.
-  for (const f of ['../src/utils/budgetMath.js', '../src/composables/useBudget.js']) assert.doesNotMatch(read(f), /accountId|accountNames/, f)
+  for (const f of ['../app/utils/budgetMath.js', '../app/composables/useBudget.js']) assert.doesNotMatch(read(f), /accountId|accountNames/, f)
   // reporting.js and csvExport.js may mention an account ONLY for the Account filter and the CSV column (design K.5):
   // the summing functions never read it (the behavioural test below proves the figures do not move).
-  const reporting = read('../src/utils/reporting.js')
+  const reporting = read('../app/utils/reporting.js')
   for (const fn of ['summarize', 'categoryBreakdown', 'compareMonths', 'groupByDay', 'sortTransactions']) {
     const start = reporting.indexOf(`export function ${fn}(`)
     assert.ok(start >= 0, fn)
@@ -261,8 +261,8 @@ test('no spending/reporting module knows about accounts', () => {
 })
 
 test('spending figures do not depend on accountId: summaries, breakdowns, month comparison and budget are identical with and without accounts', async () => {
-  const { summarize, categoryBreakdown, compareMonths, groupByDay, sortTransactions } = await import('../src/utils/reporting.js')
-  const { computeBudget } = await import('../src/utils/budgetMath.js')
+  const { summarize, categoryBreakdown, compareMonths, groupByDay, sortTransactions } = await import('../app/utils/reporting.js')
+  const { computeBudget } = await import('../app/utils/budgetMath.js')
   const plain = []
   const tagged = []
   for (let i = 0; i < 60; i++) {
@@ -322,7 +322,7 @@ test('round trip: export -> wipe -> import restores the accounts store and every
   const restored = JSON.parse(localStorage.getItem('hisaab:accounts'))
   assert.deepEqual([restored.accounts.length, restored.transfers.length, restored.adjustments.length], [2, 1, 1])
   // balances recomputed from the restored raw data are identical
-  const { accountBalance } = await import('../src/utils/accounts.js')
+  const { accountBalance } = await import('../app/utils/accounts.js')
   const data = { expenses: ex.expenses, income: inc.income, transfers: restored.transfers, adjustments: restored.adjustments }
   assert.deepEqual(accountBalance(restored.accounts.find((x) => x.id === a.id), data, { now: NOW }), before.a)
   assert.deepEqual(accountBalance(restored.accounts.find((x) => x.id === b.id), data, { now: NOW }), before.b)

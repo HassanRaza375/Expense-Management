@@ -43,7 +43,7 @@ import {
   PERIOD_LABELS,
   transactionsToCsv,
   ACCOUNT_NONE,
-} from '../src/utils/reporting.js'
+} from '../app/utils/reporting.js'
 import { getCycle } from './legacy-cycle.mjs'
 
 // ---- fixtures --------------------------------------------------------------
@@ -793,7 +793,7 @@ test('every function accepts frozen input (nothing is mutated)', () => {
 })
 
 test('reporting.js stays pure: no imports, no slicing of stored dates, no setMonth', () => {
-  const source = readFileSync(fileURLToPath(new URL('../src/utils/reporting.js', import.meta.url)), 'utf8')
+  const source = readFileSync(fileURLToPath(new URL('../app/utils/reporting.js', import.meta.url)), 'utf8')
   const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/.*$/gm, '')
   assert.doesNotMatch(code, /^\s*import\s/m, 'no imports (so no Vue / storage)')
   assert.doesNotMatch(code, /\.date\b[^\n;]*\.slice\(/, 'never slice a stored date string')

@@ -16,9 +16,9 @@ globalThis.localStorage = {
 }
 installFakeIndexedDB()
 
-const { runMigrations, MIGRATIONS, CURRENT_SCHEMA_VERSION } = await import('../src/utils/migrations.js')
-const { prepareData } = await import('../src/utils/startup.js')
-const { listSnapshots } = await import('../src/utils/snapshots.js')
+const { runMigrations, MIGRATIONS, CURRENT_SCHEMA_VERSION } = await import('../app/utils/migrations.js')
+const { prepareData } = await import('../app/utils/startup.js')
+const { listSnapshots } = await import('../app/utils/snapshots.js')
 
 // ---- the runner, with everything injected -------------------------------------------------------------------------
 

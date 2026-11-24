@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { computeBudget, toDateCycle, statusForPercent, sanitizeResetDay, cycleDayProgress, cycleIncome, incomeOverview } from '../src/utils/budgetMath.js'
+import { computeBudget, toDateCycle, statusForPercent, sanitizeResetDay, cycleDayProgress } from '../app/utils/budgetMath.js'
 import {
   localDayKey,
   filterTransactions,
@@ -20,7 +20,7 @@ import {
   weekStartOf,
   formatDayKey,
   cycleContaining,
-} from '../src/utils/reporting.js'
+} from '../app/utils/reporting.js'
 import { getCycle, getAdjacentCycle, isWithinCycle, daysElapsed, daysInCycle as legacyDaysInCycle, MS_DAY } from './legacy-cycle.mjs'
 
 // ---- fixtures --------------------------------------------------------------
@@ -395,7 +395,7 @@ test('dayInRange and formatDayKey({year:false})', () => {
 })
 
 test('budgetMath.js stays pure: only imports reporting.js, no browser globals, no setMonth', () => {
-  const source = readFileSync(fileURLToPath(new URL('../src/utils/budgetMath.js', import.meta.url)), 'utf8')
+  const source = readFileSync(fileURLToPath(new URL('../app/utils/budgetMath.js', import.meta.url)), 'utf8')
   const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/.*$/gm, '')
   const imports = [...code.matchAll(/^\s*import[^\n]*from\s+'([^']+)'/gm)].map((m) => m[1])
   assert.deepEqual(imports, ['./reporting.js'])

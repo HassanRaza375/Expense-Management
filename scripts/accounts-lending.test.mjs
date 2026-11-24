@@ -3,9 +3,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { accountBalance, accountsOverview, accountLedger } from '../src/utils/accounts.js'
-import { describeRow } from '../src/utils/accountsView.js'
-import { summarize } from '../src/utils/reporting.js'
+import { accountBalance, accountsOverview, accountLedger } from '../app/utils/accounts.js'
+import { describeRow } from '../app/utils/accountsView.js'
+import { summarize } from '../app/utils/reporting.js'
 
 const noon = (y, m, d) => new Date(y, m - 1, d, 12).toISOString()
 const NOW = new Date(2026, 10, 20, 12)

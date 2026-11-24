@@ -4,8 +4,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { cycleDayProgress, cycleIncome, incomeOverview, computeBudget, toDateCycle } from '../src/utils/budgetMath.js'
-import { localDayKey, cycleContaining, addDays, parseDayKey } from '../src/utils/reporting.js'
+import { cycleDayProgress, cycleIncome, incomeOverview, computeBudget, toDateCycle } from '../app/utils/budgetMath.js'
+import { localDayKey, cycleContaining, addDays, parseDayKey } from '../app/utils/reporting.js'
 import { getCycle, getAdjacentCycle, isWithinCycle, daysElapsed as legacyDaysElapsed } from './legacy-cycle.mjs'
 
 let seq = 0
@@ -161,7 +161,7 @@ test('cycleIncome: only income dated inside the cycle, both end days included', 
 
 test('the Income page and the cycle rail contain no date math of their own', () => {
   const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
-  for (const f of ['../src/views/IncomeView.vue', '../src/components/CycleRail.vue', '../src/composables/useIncome.js']) {
+  for (const f of ['../app/views/IncomeView.vue', '../app/components/CycleRail.vue', '../app/composables/useIncome.js']) {
     const src = read(f)
     assert.doesNotMatch(src, /getCycle|getAdjacentCycle|isWithinCycle|daysInCycle|daysElapsed|\.slice\(0, 10\)|setMonth\(/, f)
   }

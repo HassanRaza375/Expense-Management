@@ -17,13 +17,13 @@ globalThis.localStorage = {
 }
 installFakeIndexedDB()
 
-const { useAccounts } = await import('../src/composables/useAccounts.js')
-const { useExpenses } = await import('../src/composables/useExpenses.js')
-const { useBills, useConnections } = await import('../src/composables/useBills.js')
-const { useRecurring } = await import('../src/composables/useRecurring.js')
-const { useLending } = await import('../src/composables/useLending.js')
-const { localNoonISO, summarize } = await import('../src/utils/reporting.js')
-const { accountForNewRecord } = await import('../src/utils/accountsView.js')
+const { useAccounts } = await import('../app/composables/useAccounts.js')
+const { useExpenses } = await import('../app/composables/useExpenses.js')
+const { useBills, useConnections } = await import('../app/composables/useBills.js')
+const { useRecurring } = await import('../app/composables/useRecurring.js')
+const { useLending } = await import('../app/composables/useLending.js')
+const { localNoonISO, summarize } = await import('../app/utils/reporting.js')
+const { accountForNewRecord } = await import('../app/utils/accountsView.js')
 
 const acc = useAccounts()
 const ex = useExpenses()
@@ -35,7 +35,7 @@ const today = new Date()
 const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
 const open = (name, extra = {}) => acc.addAccount({ name, type: 'bank', openingBalance: 1000, openingDate: '2000-01-01', ...extra })
 let month = 0
-const newBill = () => billsApi.addBill({ connectionId: conn.id, billingMonth: `2026-${String(++month).padStart(2, '0')}`, dueDate: '2026-12-20', amount: 2000, currentReading: 100 + month })
+const newBill = () => billsApi.addBill({ connectionId: conn.id, billingMonth: `2026-${String(++month).padStart(2, '0')}`, dueDate: '2099-12-20', amount: 2000, currentReading: 100 + month })
 const payArgs = { paidDate: localNoonISO('2026-11-07'), paidBy: 'me', paymentMethod: 'cash', transactionReference: '', categoryId: 'cat-bills' }
 
 beforeEach(() => {

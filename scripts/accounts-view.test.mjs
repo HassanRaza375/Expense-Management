@@ -19,14 +19,14 @@ globalThis.localStorage = {
 }
 installFakeIndexedDB()
 
-const { useAccounts } = await import('../src/composables/useAccounts.js')
-const { useExpenses } = await import('../src/composables/useExpenses.js')
-const { useIncome } = await import('../src/composables/useIncome.js')
-const { useSettings } = await import('../src/composables/useSettings.js')
-const { useBudget } = await import('../src/composables/useBudget.js')
-const { accountCards, unassignedSummary, describeRow, ledgerView, limitGroups, transferChoices, defaultTransferPair, reconcileView } = await import('../src/utils/accountsView.js')
-const { accountBalance } = await import('../src/utils/accounts.js')
-const { summarize, filterTransactions, transactionsToCsv, localDayKey } = await import('../src/utils/reporting.js')
+const { useAccounts } = await import('../app/composables/useAccounts.js')
+const { useExpenses } = await import('../app/composables/useExpenses.js')
+const { useIncome } = await import('../app/composables/useIncome.js')
+const { useSettings } = await import('../app/composables/useSettings.js')
+const { useBudget } = await import('../app/composables/useBudget.js')
+const { accountCards, unassignedSummary, describeRow, ledgerView, limitGroups, transferChoices, defaultTransferPair, reconcileView } = await import('../app/utils/accountsView.js')
+const { accountBalance } = await import('../app/utils/accounts.js')
+const { summarize, filterTransactions, transactionsToCsv, localDayKey } = await import('../app/utils/reporting.js')
 
 const acc = useAccounts()
 const ex = useExpenses()
@@ -367,7 +367,7 @@ test('...while the account balances DO move (so the test above is not vacuous)',
 // ---- source guards ---------------------------------------------------------------------------------------------------
 
 test('the Accounts screens hold no money maths: they use useAccounts + accountsView.js only', () => {
-  const root = new URL('../src/', import.meta.url)
+  const root = new URL('../app/', import.meta.url)
   const files = [
     ...readdirSync(new URL('views/', root)).filter((f) => /^Account/.test(f)).map((f) => `views/${f}`),
     ...readdirSync(new URL('components/', root)).filter((f) => /^(Account|Transfer|Reconcile)/.test(f)).map((f) => `components/${f}`),
@@ -377,7 +377,7 @@ test('the Accounts screens hold no money maths: they use useAccounts + accountsV
     const text = readFileSync(fileURLToPath(new URL(f, root)), 'utf8')
     assert.doesNotMatch(text, /from '\.\.\/utils\/accounts\.js'/, `${f} must not do account maths itself`)
     assert.doesNotMatch(text, /\.reduce\(/, `${f} must not sum amounts`)
-    assert.doesNotMatch(text, /openingBalance\s*[+\-]|running\s*[+\-]=/, `${f} must not compute balances`)
+    assert.doesNotMatch(text, /openingBalance\s*[+-]|running\s*[+-]=/, `${f} must not compute balances`)
     assert.doesNotMatch(text, /useBudget|computeBudget|localStorage/, `${f} must not touch budget or storage directly`)
     // One list of "records that move money" lives in useAccounts().records(); a screen that assembled its own list once
     // forgot a record kind (investments) and showed a wrong ledger, so the screens may not import those stores at all.
@@ -387,7 +387,7 @@ test('the Accounts screens hold no money maths: they use useAccounts + accountsV
 
 // ---- Phase 2.4: picker + bulk assign ---------------------------------------------------------------------------------
 
-import { accountPickerChoices, initialAccountId, assignmentPlan } from '../src/utils/accountsView.js'
+const { accountPickerChoices, initialAccountId, assignmentPlan } = await import('../app/utils/accountsView.js')
 const acct = (id, openingBalance, openingDate, extra = {}) => ({ id, name: id, type: 'bank', openingBalance, openingDate, archived: false, order: 0, ...extra })
 
 test('accountPickerChoices: empty without accounts (picker hidden); active only; archived kept when it is the record\'s own', () => {

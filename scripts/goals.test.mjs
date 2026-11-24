@@ -14,9 +14,9 @@ globalThis.localStorage = {
   clear: () => store.clear(),
 }
 
-const { validateGoal, manualSaved, goalProgress } = await import('../src/utils/goals.js')
-const { parseBackup, BACKUP_MODULES } = await import('../src/utils/backup.js')
-const { STORAGE_KEYS } = await import('../src/utils/storage.js')
+const { validateGoal, manualSaved, goalProgress } = await import('../app/utils/goals.js')
+const { parseBackup, BACKUP_MODULES } = await import('../app/utils/backup.js')
+const { STORAGE_KEYS } = await import('../app/utils/storage.js')
 
 const NOW = new Date(2026, 10, 20, 12) // 20 Nov 2026
 const goal = (extra = {}) => ({ id: 'g', name: 'Emergency fund', targetAmount: 1000, targetDate: '2026-12-20', startDay: '2026-10-20', savings: [], ...extra })
@@ -121,7 +121,7 @@ test('goals are a backup module with an id-unique array shape; bad goals only wa
   assert.equal(parseBackup(file({ not: 'a list' })).ok, false, 'a wrong-shaped section is refused')
 })
 
-const { useGoals } = await import('../src/composables/useGoals.js')
+const { useGoals } = await import('../app/composables/useGoals.js')
 const g = useGoals()
 beforeEach(() => {
   g.goals.splice(0, g.goals.length)

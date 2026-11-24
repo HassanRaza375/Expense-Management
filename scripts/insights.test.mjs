@@ -4,8 +4,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { buildInsights } from '../src/utils/insights.js'
-import { computeBudget } from '../src/utils/budgetMath.js'
+import { buildInsights } from '../app/utils/insights.js'
+import { computeBudget } from '../app/utils/budgetMath.js'
 
 const noon = (y, m, d) => new Date(y, m - 1, d, 12).toISOString()
 const NOW = new Date(2026, 10, 20, 12) // 20 Nov 2026; with reset day 1 the cycle is 1-30 Nov, day 20 of 30
@@ -144,6 +144,6 @@ test('every insight has an id, a level, a title, a reason (detail) and a place t
 })
 
 test('the module is pure: no Vue, no storage', () => {
-  const src = readFileSync(fileURLToPath(new URL('../src/utils/insights.js', import.meta.url)), 'utf8')
+  const src = readFileSync(fileURLToPath(new URL('../app/utils/insights.js', import.meta.url)), 'utf8')
   assert.doesNotMatch(src, /from 'vue'|storage\.js|localStorage|composables\//)
 })

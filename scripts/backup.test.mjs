@@ -20,8 +20,8 @@ globalThis.localStorage = {
   clear: () => store.clear(),
 }
 
-const { get, set, getRaw, STORAGE_KEYS } = await import('../src/utils/storage.js')
-const { buildBackup, parseBackup, summarizeBackup, applyBackup, BACKUP_MODULES, BACKUP_KIND } = await import('../src/utils/backup.js')
+const { get, set, getRaw, STORAGE_KEYS } = await import('../app/utils/storage.js')
+const { buildBackup, parseBackup, summarizeBackup, applyBackup, BACKUP_MODULES, BACKUP_KIND } = await import('../app/utils/backup.js')
 
 // A realistic dataset touching every module.
 function seed() {
